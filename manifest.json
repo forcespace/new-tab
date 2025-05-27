@@ -1,0 +1,8 @@
+{
+    "manifest_version": 3,
+    "name": "New Tab с поиском Яндекса без рекламы",
+    "version": "1.0",
+    "chrome_url_overrides": {
+        "newtab": "newtab.html"
+    }
+}

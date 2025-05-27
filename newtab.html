@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8"/>
+    <title>Новая вкладка — Яндекс Поиск</title>
+    <style>
+        body {
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #26282a;
+            font-family: Arial, sans-serif;
+        }
+
+        #search-form {
+            width: 100%;
+            max-width: 600px;
+            display: flex;
+            /*border: 1px solid #ccc;*/
+            border-radius: 5px;
+            overflow: hidden;
+            /*box-shadow: 0 2px 6px rgb(0 0 0 / 0.1);*/
+        }
+
+        #search-input {
+            flex: 1;
+            padding: 10px 20px;
+            border: none;
+            font-size: 18px;
+            outline: none;
+        }
+
+        #search-button {
+            background: #fc0;
+            border: none;
+            padding: 0 20px;
+            cursor: pointer;
+            font-weight: 400;
+            font-size: 18px;
+            color: #000;
+            transition: background-color 0.3s ease;
+        }
+
+        #search-button:hover {
+            background: #e6b800;
+        }
+    </style>
+</head>
+<body>
+<form id="search-form" action="https://yandex.ru/search/" method="GET">
+    <input
+      id="search-input"
+      name="text"
+      type="search"
+      placeholder="Давай пояндексим"
+      autocomplete="off"
+      autofocus
+    />
+    <button id="search-button" type="submit">Найти</button>
+</form>
+</body>
+</html>
