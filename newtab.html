@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8"/>
-    <title>Новая вкладка — Яндекс Поиск</title>
+    <title>Новая вкладка</title>
     <style>
         body {
             margin: 0;
@@ -16,9 +16,9 @@
 
         #search-form {
             width: 100%;
-            max-width: 600px;
+            max-width: 768px;
             display: flex;
-            /*border: 1px solid #ccc;*/
+            border: 1px solid;
             border-radius: 5px;
             overflow: hidden;
             /*box-shadow: 0 2px 6px rgb(0 0 0 / 0.1);*/
@@ -30,6 +30,8 @@
             border: none;
             font-size: 18px;
             outline: none;
+            background: #26282a;
+            color: #fff;
         }
 
         #search-button {
@@ -54,7 +56,7 @@
       id="search-input"
       name="text"
       type="search"
-      placeholder="Давай пояндексим"
+      placeholder="Поиск"
       autocomplete="off"
       autofocus
     />
