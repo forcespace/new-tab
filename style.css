@@ -19,7 +19,7 @@ body {
 .search-input,
 .search-engine-select {
     font-size: 18px;
-    line-height: 1.2;
+    line-height: 1;
     box-sizing: border-box;
     height: 42px;
     padding: 10px 20px;
@@ -141,15 +141,15 @@ body {
     white-space: nowrap;
     text-decoration: none;
     color: white;
-    border: none;
+    border: 1px solid #000;
     border-radius: 5px;
-    background-color: #227bdd;
+    background: transparent;
+    /*background-color: #227bdd;*/
 }
 
 .chat-button:focus,
 .chat-button:active,
 .chat-button:hover {
-    opacity: .8;
-    background-color: #227bdd;
+    opacity: .5;
 }
 
