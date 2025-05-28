@@ -3,74 +3,34 @@
 <head>
     <meta charset="UTF-8"/>
     <title>Новая вкладка</title>
-    <style>
-        body {
-            margin: 0;
-            height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background: #26282a;
-            font-family: Arial, sans-serif;
-        }
-
-        #search-form {
-            width: 100%;
-            max-width: 768px;
-            display: flex;
-            border: none;
-            overflow: hidden;
-            /*box-shadow: 0 2px 6px rgb(0 0 0 / 0.1);*/
-        }
-
-        #search-input {
-            flex: 1;
-            padding: 10px 20px;
-            border: 1px solid #000;
-            font-size: 18px;
-            outline: none;
-            background: #26282a;
-            border-bottom-left-radius: 5px;
-            border-top-left-radius: 5px;
-            color: #fff;
-            transition: .3s;
-        }
-
-        #search-input:active,
-        #search-input:focus,
-        #search-input:hover {
-            border-color: #fc0;
-        }
-
-        #search-button {
-            background: #fc0;
-            border: none;
-            padding: 0 20px;
-            cursor: pointer;
-            font-weight: 400;
-            font-size: 18px;
-            color: #000;
-            transition: background-color 0.3s ease;
-            border-bottom-right-radius: 5px;
-            border-top-right-radius: 5px;
-        }
-
-        #search-button:hover {
-            background: #e6b800;
-        }
-    </style>
+    <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
-<form id="search-form" action="https://yandex.ru/search/" method="GET">
+<form class="search-form js-search-form" action="https://yandex.ru/search/" method="GET" target="_blank">
+    <div class="select-wrapper">
+        <select class="search-engine-select js-search-engine-select" aria-label="Выбор поисковой системы">
+            <option value="yandex" selected>Яндекс</option>
+            <option value="google">Google</option>
+        </select>
+    </div>
+
     <input
-      id="search-input"
+      class="search-input js-search-input"
       name="text"
       type="search"
       placeholder="Поиск"
       autocomplete="off"
+      required
       autofocus
     />
-    <button id="search-button" type="submit">Найти</button>
+    <button class="search-button" type="submit">Найти</button>
 </form>
+
+<div class="chats">
+    <a class="chat-button" href="https://chat.travelline.lan/">chat.travelline</a>
+    <a class="chat-button" href=https://chat.deepseek.com/">chat.deep-seek</a>
+</div>
+
+<script src="search.js"></script>
 </body>
 </html>

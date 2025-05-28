@@ -26,3 +26,6 @@ Temporary Items
 *.DS_Store
 *.AppleDouble
 *.LSOverride
+
+# IDE
+.idea

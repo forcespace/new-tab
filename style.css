@@ -1,0 +1,155 @@
+body {
+    font-family: Arial, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    margin: 0;
+    background: #26282a;
+}
+
+.search-form {
+    display: flex;
+    overflow: hidden;
+    width: 100%;
+    max-width: 768px;
+    border: none;
+}
+
+.search-input,
+.search-engine-select {
+    font-size: 18px;
+    line-height: 1.2;
+    box-sizing: border-box;
+    height: 42px;
+    padding: 10px 20px;
+    cursor: pointer;
+    transition: 1s;
+    color: #fff;
+    border: 1px solid #000;
+    outline: none;
+    background-color: #26282a;
+}
+
+.search-input {
+    flex: 1;
+    border-right: none;
+    border-left: none;
+}
+
+.search-engine-select {
+    position: relative;
+    padding-right: 40px;
+    border-top-left-radius: 5px;
+    border-bottom-left-radius: 5px;
+    background-image: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+}
+
+.select-wrapper {
+    position: relative;
+    display: inline-block;
+    width: max-content;
+}
+
+.select-wrapper::after {
+    position: absolute;
+    top: -4px;
+    right: 20px;
+    bottom: 0;
+    width: 8px;
+    height: 8px;
+    margin: auto;
+    content: '';
+    user-select: none;
+    transform: rotate(-45deg);
+    pointer-events: none;
+    border-bottom: 2px solid #fff;
+    border-left: 2px solid #fff;
+}
+
+.search-button {
+    font-size: 18px;
+    font-weight: 400;
+    padding: 0 20px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    color: #000;
+    border: none;
+    border-top-right-radius: 5px;
+    border-bottom-right-radius: 5px;
+    background: #fc0;
+}
+
+.search-button:hover {
+    background: #e6b800;
+}
+
+.search-engine-select--yandex {
+    color: #000;
+    border-color: #e6b800;
+    background-color: #fc0;
+}
+
+.search-button--yandex {
+    color: #000;
+    background-color: #fc0;
+}
+
+.search-button--yandex:hover {
+    background-color: #e6b800;
+}
+
+.search-engine-select--google {
+    color: #fff;
+    border-color: #227bdd;
+    background-color: #4285f4;
+}
+
+.search-button--google {
+    color: #fff;
+    background-color: #227bdd;
+}
+
+.search-button--google:focus,
+.search-button--google:active,
+.search-button--google:hover {
+    background-color: #227bdd;
+}
+
+.chats {
+    position: fixed;
+    right: 50px;
+    bottom: 50px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.chat-button {
+    font-family: Arial, sans-serif;
+    font-size: 16px;
+    font-weight: 400;
+    line-height: 1;
+    padding: 12px 20px;
+    cursor: pointer;
+    user-select: none;
+    transition: .3s;
+    text-align: center;
+    white-space: nowrap;
+    text-decoration: none;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    background-color: #227bdd;
+}
+
+.chat-button:focus,
+.chat-button:active,
+.chat-button:hover {
+    opacity: .8;
+    background-color: #227bdd;
+}
+
