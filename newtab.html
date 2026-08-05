@@ -15,59 +15,39 @@
         </div>
 
         <div class="project-title">
-            <span class="product-mark">PS</span>
-            <span>new-tab</span>
+            <span class="product-mark">ST</span>
+            <span>Search Tab</span>
         </div>
 
-        <div class="header-actions">
-            <label class="theme-control">
-                <span>Theme</span>
-                <select class="theme-select js-theme-select" aria-label="Выбор темы интерфейса">
-                    <option value="islands-dark" selected>Islands Dark</option>
-                    <option value="islands-light">Islands Light</option>
-                    <option value="islands-darcula">Islands Darcula</option>
-                    <option value="dark">Dark</option>
-                    <option value="light">Light</option>
-                    <option value="light-header">Light with Light Header</option>
-                    <option value="darcula">Darcula</option>
-                    <option value="high-contrast">High Contrast</option>
-                </select>
-            </label>
-        </div>
+        <div class="header-actions"></div>
     </header>
 
     <main class="ide-main">
-        <aside class="tool-window" aria-label="Панель проекта">
-            <div class="tool-window-title">Project</div>
-            <div class="project-tree">
-                <div class="tree-item tree-item--active">
-                    <span class="tree-icon tree-icon--folder"></span>
-                    new-tab
-                </div>
-                <div class="tree-item">
-                    <span class="tree-icon tree-icon--html"></span>
-                    newtab.html
-                </div>
-                <div class="tree-item">
-                    <span class="tree-icon tree-icon--css"></span>
-                    style.css
-                </div>
-                <div class="tree-item">
-                    <span class="tree-icon tree-icon--js"></span>
-                    search.js
-                </div>
+        <aside class="tool-window" aria-label="История поиска">
+            <div class="tool-window-title">
+                <span>Search History</span>
+                <button class="tool-window-toggle js-tool-window-toggle" type="button" aria-label="Свернуть историю поиска">‹</button>
             </div>
+            <div class="project-tree js-search-history"></div>
         </aside>
 
+        <button class="tool-window-stripe js-tool-window-stripe" type="button" aria-label="Развернуть историю поиска">
+            History
+        </button>
+
         <section class="editor-area" aria-label="Рабочая область">
-            <div class="editor-tabs" aria-hidden="true">
-                <div class="editor-tab editor-tab--active">
+            <div class="editor-tabs" role="tablist" aria-label="Вкладки редактора">
+                <button class="editor-tab editor-tab--active js-editor-tab" type="button" role="tab" aria-selected="true" data-tab="search">
                     <span class="tab-icon"></span>
                     search.php
-                </div>
+                </button>
+                <button class="editor-tab js-editor-tab" type="button" role="tab" aria-selected="false" data-tab="settings">
+                    <span class="tab-icon tab-icon--settings"></span>
+                    settings.json
+                </button>
             </div>
 
-            <div class="editor-pane">
+            <div class="editor-pane editor-pane--active js-editor-pane" data-pane="search">
                 <div class="line-gutter" aria-hidden="true">
                     <span>1</span>
                     <span>2</span>
@@ -102,16 +82,76 @@
                             />
 
                             <div class="select-wrapper">
-                                <select class="search-engine-select js-search-engine-select" aria-label="Выбор поисковой системы">
-                                    <option value="yandex" selected>Яндекс</option>
-                                    <option value="google">Google</option>
-                                </select>
+                                <select class="search-engine-select js-search-engine-select" aria-label="Выбор поисковой системы"></select>
                             </div>
 
                             <button class="search-button" type="submit">Enter</button>
                         </form>
 
                         <div class="search-suggestions js-search-suggestions" aria-label="Результаты поиска"></div>
+                    </section>
+                </div>
+            </div>
+
+            <div class="editor-pane js-editor-pane" data-pane="settings">
+                <div class="line-gutter" aria-hidden="true">
+                    <span>1</span>
+                    <span>2</span>
+                    <span>3</span>
+                    <span>4</span>
+                    <span>5</span>
+                    <span>6</span>
+                    <span>7</span>
+                    <span>8</span>
+                    <span>9</span>
+                    <span>10</span>
+                    <span>11</span>
+                    <span>12</span>
+                </div>
+
+                <div class="workspace workspace--settings">
+                    <section class="settings-panel" aria-label="Настройки">
+                        <div class="settings-group">
+                            <label class="settings-field">
+                                <span class="settings-label">Theme</span>
+                                <select class="settings-select js-theme-select" aria-label="Выбор темы интерфейса">
+                                    <option value="islands-dark" selected>Islands Dark</option>
+                                    <option value="islands-light">Islands Light</option>
+                                    <option value="islands-darcula">Islands Darcula</option>
+                                    <option value="dark">Dark</option>
+                                    <option value="light">Light</option>
+                                    <option value="light-header">Light with Light Header</option>
+                                    <option value="darcula">Darcula</option>
+                                    <option value="high-contrast">High Contrast</option>
+                                </select>
+                            </label>
+
+                            <label class="settings-field">
+                                <span class="settings-label">Default Search Engine</span>
+                                <select class="settings-select js-default-search-engine-select" aria-label="Поисковик по умолчанию"></select>
+                            </label>
+
+                            <label class="settings-field">
+                                <span class="settings-label">UI Font Size</span>
+                                <select class="settings-select js-ui-font-size-select" aria-label="Размер шрифта интерфейса">
+                                    <option value="compact">Compact</option>
+                                    <option value="default" selected>Default</option>
+                                    <option value="large">Large</option>
+                                    <option value="extra-large">Extra Large</option>
+                                </select>
+                            </label>
+
+                            <label class="settings-field">
+                                <span class="settings-label">UI Font Family</span>
+                                <select class="settings-select js-ui-font-family-select" aria-label="Семейство шрифта интерфейса">
+                                    <option value="system" selected>System</option>
+                                    <option value="inter">Inter</option>
+                                    <option value="segoe">Segoe UI</option>
+                                    <option value="arial">Arial</option>
+                                    <option value="mono">Monospace</option>
+                                </select>
+                            </label>
+                        </div>
                     </section>
                 </div>
             </div>
