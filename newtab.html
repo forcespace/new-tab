@@ -82,25 +82,37 @@
                 </div>
 
                 <div class="workspace">
-                    <form class="search-form js-search-form" action="https://yandex.ru/search/" method="GET">
-                        <div class="select-wrapper">
-                            <select class="search-engine-select js-search-engine-select" aria-label="Выбор поисковой системы">
-                                <option value="yandex" selected>Яндекс</option>
-                                <option value="google">Google</option>
-                            </select>
+                    <section class="search-popup" aria-label="Поиск">
+                        <div class="search-popup-header">
+                            <span>Search Everywhere</span>
+                            <span class="shortcut-key">Double Shift</span>
                         </div>
 
-                        <input
-                          class="search-input js-search-input"
-                          name="text"
-                          type="search"
-                          placeholder="Search Everywhere"
-                          autocomplete="off"
-                          required
-                          autofocus
-                        />
-                        <button class="search-button" type="submit">Найти</button>
-                    </form>
+                        <form class="search-form js-search-form" action="https://yandex.ru/search/" method="GET">
+                            <span class="search-icon" aria-hidden="true"></span>
+
+                            <input
+                              class="search-input js-search-input"
+                              name="text"
+                              type="search"
+                              placeholder="Type to search"
+                              autocomplete="off"
+                              required
+                              autofocus
+                            />
+
+                            <div class="select-wrapper">
+                                <select class="search-engine-select js-search-engine-select" aria-label="Выбор поисковой системы">
+                                    <option value="yandex" selected>Яндекс</option>
+                                    <option value="google">Google</option>
+                                </select>
+                            </div>
+
+                            <button class="search-button" type="submit">Enter</button>
+                        </form>
+
+                        <div class="search-suggestions js-search-suggestions" aria-label="Результаты поиска"></div>
+                    </section>
                 </div>
             </div>
         </section>
