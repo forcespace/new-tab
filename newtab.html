@@ -22,45 +22,36 @@
         <div class="header-actions"></div>
     </header>
 
-    <main class="ide-main">
-        <aside class="tool-window" aria-label="История поиска">
+    <main class="ide-main ide-main--tool-window-collapsed">
+        <aside class="tool-window" aria-label="Навигация">
             <div class="tool-window-title">
-                <span>Search History</span>
-                <button class="tool-window-toggle js-tool-window-toggle" type="button" aria-label="Свернуть историю поиска">‹</button>
+                <span class="js-tool-window-title">Bookmarks</span>
+                <button class="tool-window-toggle js-tool-window-toggle" type="button" aria-label="Свернуть навигацию">‹</button>
             </div>
-            <div class="project-tree js-search-history"></div>
+
+            <div class="project-tree js-bookmarks-tree"></div>
+            <div class="tool-window-resizer js-tool-window-resizer" role="separator" aria-label="Изменить ширину навигации"></div>
         </aside>
 
-        <button class="tool-window-stripe js-tool-window-stripe" type="button" aria-label="Развернуть историю поиска">
-            History
+        <button class="tool-window-stripe js-tool-window-stripe" type="button" aria-label="Развернуть навигацию">
+            Bookmarks
         </button>
 
         <section class="editor-area" aria-label="Рабочая область">
             <div class="editor-tabs" role="tablist" aria-label="Вкладки редактора">
                 <button class="editor-tab editor-tab--active js-editor-tab" type="button" role="tab" aria-selected="true" data-tab="search">
-                    <span class="tab-icon"></span>
-                    search.php
+                    <span class="tab-icon tab-icon--php" aria-hidden="true"></span>
+                    <span class="tab-title">search.php</span>
+                    <span class="tab-close" aria-hidden="true"></span>
                 </button>
                 <button class="editor-tab js-editor-tab" type="button" role="tab" aria-selected="false" data-tab="settings">
-                    <span class="tab-icon tab-icon--settings"></span>
-                    settings.json
+                    <span class="tab-icon tab-icon--json" aria-hidden="true"></span>
+                    <span class="tab-title">settings.json</span>
+                    <span class="tab-close" aria-hidden="true"></span>
                 </button>
             </div>
 
             <div class="editor-pane editor-pane--active js-editor-pane" data-pane="search">
-                <div class="line-gutter" aria-hidden="true">
-                    <span>1</span>
-                    <span>2</span>
-                    <span>3</span>
-                    <span>4</span>
-                    <span>5</span>
-                    <span>6</span>
-                    <span>7</span>
-                    <span>8</span>
-                    <span>9</span>
-                    <span>10</span>
-                </div>
-
                 <div class="workspace workspace--search js-search-workspace">
                     <section class="search-popup js-search-popup" aria-label="Поиск">
                         <div class="search-popup-header js-search-popup-drag-handle">
@@ -90,21 +81,6 @@
             </div>
 
             <div class="editor-pane js-editor-pane" data-pane="settings">
-                <div class="line-gutter" aria-hidden="true">
-                    <span>1</span>
-                    <span>2</span>
-                    <span>3</span>
-                    <span>4</span>
-                    <span>5</span>
-                    <span>6</span>
-                    <span>7</span>
-                    <span>8</span>
-                    <span>9</span>
-                    <span>10</span>
-                    <span>11</span>
-                    <span>12</span>
-                </div>
-
                 <div class="workspace workspace--settings">
                     <section class="settings-panel" aria-label="Настройки">
                         <div class="settings-group">
@@ -149,9 +125,9 @@
                             </label>
 
                             <div class="settings-field">
-                                <span class="settings-label">Search Popup Layout</span>
+                                <span class="settings-label">UI Settings</span>
                                 <button class="settings-button js-reset-search-popup-layout" type="button">
-                                    Reset Position
+                                    Reset All
                                 </button>
                             </div>
                         </div>
@@ -161,6 +137,8 @@
         </section>
     </main>
 </div>
+
+<div class="bookmark-context-menu js-bookmark-context-menu" role="menu" hidden></div>
 
 <script src="search.js"></script>
 </body>

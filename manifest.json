@@ -2,6 +2,10 @@
     "manifest_version": 3,
     "name": "New Tab с поиском Яндекса без рекламы",
     "version": "1.0",
+    "permissions": [
+        "bookmarks",
+        "favicon"
+    ],
     "host_permissions": [
         "https://suggest.yandex.ru/*",
         "https://suggestqueries.google.com/*"

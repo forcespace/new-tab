@@ -6,25 +6,34 @@ const uiFontSizeSelect = document.querySelector('.js-ui-font-size-select');
 const uiFontFamilySelect = document.querySelector('.js-ui-font-family-select');
 const searchEngineFilters = document.querySelector('.js-search-engine-filters');
 const suggestionsContainer = document.querySelector('.js-search-suggestions');
-const searchHistoryContainer = document.querySelector('.js-search-history');
+const bookmarksTreeContainer = document.querySelector('.js-bookmarks-tree');
 const searchWorkspace = document.querySelector('.js-search-workspace');
 const searchPopup = document.querySelector('.js-search-popup');
 const searchPopupDragHandle = document.querySelector('.js-search-popup-drag-handle');
 const ideMain = document.querySelector('.ide-main');
+const toolWindow = document.querySelector('.tool-window');
+const toolWindowTitle = document.querySelector('.js-tool-window-title');
 const toolWindowToggle = document.querySelector('.js-tool-window-toggle');
 const toolWindowStripe = document.querySelector('.js-tool-window-stripe');
+const toolWindowResizer = document.querySelector('.js-tool-window-resizer');
+const bookmarkContextMenu = document.querySelector('.js-bookmark-context-menu');
 const resetSearchPopupLayoutButton = document.querySelector('.js-reset-search-popup-layout');
 const editorTabs = document.querySelectorAll('.js-editor-tab');
 const editorPanes = document.querySelectorAll('.js-editor-pane');
 const THEME_STORAGE_KEY = 'new-tab-theme';
 const SEARCH_HISTORY_STORAGE_KEY = 'new-tab-search-history';
 const TOOL_WINDOW_COLLAPSED_STORAGE_KEY = 'new-tab-tool-window-collapsed';
+const TOOL_WINDOW_WIDTH_STORAGE_KEY = 'new-tab-tool-window-width';
+const BOOKMARKS_EXPANDED_STORAGE_KEY = 'new-tab-bookmarks-expanded-folders';
 const DEFAULT_SEARCH_ENGINE_STORAGE_KEY = 'new-tab-default-search-engine';
 const UI_FONT_SIZE_STORAGE_KEY = 'new-tab-ui-font-size';
 const UI_FONT_FAMILY_STORAGE_KEY = 'new-tab-ui-font-family';
 const SEARCH_POPUP_POSITION_STORAGE_KEY = 'new-tab-search-popup-position';
 const DEFAULT_THEME = 'islands-dark';
 const DEFAULT_SEARCH_ENGINE = 'yandex';
+const DEFAULT_TOOL_WINDOW_WIDTH = 238;
+const MIN_TOOL_WINDOW_WIDTH = 180;
+const MAX_TOOL_WINDOW_WIDTH_RATIO = 0.55;
 const DEFAULT_UI_FONT_SIZE = 'default';
 const DEFAULT_UI_FONT_FAMILY = 'system';
 const SUGGESTION_LIMIT = 6;
@@ -43,6 +52,10 @@ const FALLBACK_SUFFIXES = [
 let suggestionAbortController = null;
 let suggestionDebounceTimer = null;
 let searchPopupDragState = null;
+let toolWindowResizeState = null;
+let bookmarksRefreshTimer = null;
+let expandedBookmarkFolderIds = new Set();
+let hasBookmarksExpansionState = false;
 let lastShiftPressedAt = 0;
 let currentSearchEngine = DEFAULT_SEARCH_ENGINE;
 
@@ -334,8 +347,16 @@ function syncSearchPopupPosition() {
     }
 }
 
-function resetSearchPopupLayout() {
+function resetUiSettings() {
+    localStorage.removeItem(THEME_STORAGE_KEY);
+    localStorage.removeItem(UI_FONT_SIZE_STORAGE_KEY);
+    localStorage.removeItem(UI_FONT_FAMILY_STORAGE_KEY);
+    localStorage.removeItem(DEFAULT_SEARCH_ENGINE_STORAGE_KEY);
     localStorage.removeItem(SEARCH_POPUP_POSITION_STORAGE_KEY);
+    setTheme(DEFAULT_THEME);
+    setUiFontSize(DEFAULT_UI_FONT_SIZE);
+    setUiFontFamily(DEFAULT_UI_FONT_FAMILY);
+    setDefaultSearchEngine(DEFAULT_SEARCH_ENGINE);
     searchPopup.style.removeProperty('left');
     searchPopup.style.removeProperty('top');
     searchPopup.style.removeProperty('transform');
@@ -393,6 +414,11 @@ function focusSearchInput() {
 }
 
 function onGlobalKeydown(event) {
+    if (event.key === 'Escape') {
+        hideBookmarkContextMenu();
+        return;
+    }
+
     if (event.key !== 'Shift' || event.repeat) return;
 
     const now = Date.now();
@@ -427,13 +453,803 @@ function saveSearchHistory(history) {
     localStorage.setItem(SEARCH_HISTORY_STORAGE_KEY, JSON.stringify(history.slice(0, SEARCH_HISTORY_LIMIT)));
 }
 
+function updateToolWindowLabels() {
+    const isCollapsed = ideMain.classList.contains('ide-main--tool-window-collapsed');
+    const collapsedAction = isCollapsed ? 'Развернуть навигацию' : 'Свернуть навигацию';
+
+    toolWindowTitle.textContent = 'Bookmarks';
+    toolWindowStripe.textContent = 'Bookmarks';
+    toolWindowStripe.setAttribute('aria-label', 'Развернуть навигацию');
+    toolWindowToggle.setAttribute('aria-label', collapsedAction);
+}
+
 function setToolWindowCollapsed(isCollapsed) {
     ideMain.classList.toggle('ide-main--tool-window-collapsed', isCollapsed);
-    toolWindowToggle.setAttribute(
-        'aria-label',
-        isCollapsed ? 'Развернуть историю поиска' : 'Свернуть историю поиска'
-    );
     localStorage.setItem(TOOL_WINDOW_COLLAPSED_STORAGE_KEY, String(isCollapsed));
+    updateToolWindowLabels();
+
+    if (isCollapsed) {
+        collapseAllBookmarkFolders();
+    }
+}
+
+function getMaxToolWindowWidth() {
+    return Math.max(MIN_TOOL_WINDOW_WIDTH, Math.floor(window.innerWidth * MAX_TOOL_WINDOW_WIDTH_RATIO));
+}
+
+function clampToolWindowWidth(width) {
+    return Math.min(Math.max(width, MIN_TOOL_WINDOW_WIDTH), getMaxToolWindowWidth());
+}
+
+function setToolWindowWidth(width, shouldSave = true) {
+    const nextWidth = clampToolWindowWidth(width);
+
+    ideMain.style.setProperty('--tool-window-width', `${nextWidth}px`);
+
+    if (shouldSave) {
+        localStorage.setItem(TOOL_WINDOW_WIDTH_STORAGE_KEY, String(nextWidth));
+    }
+
+    return nextWidth;
+}
+
+function initToolWindowWidth() {
+    const savedWidth = Number(localStorage.getItem(TOOL_WINDOW_WIDTH_STORAGE_KEY));
+    const width = Number.isFinite(savedWidth) && savedWidth > 0 ? savedWidth : DEFAULT_TOOL_WINDOW_WIDTH;
+
+    setToolWindowWidth(width, false);
+}
+
+function onToolWindowResizePointerMove(event) {
+    if (!toolWindowResizeState) return;
+
+    const nextWidth = toolWindowResizeState.startWidth + event.clientX - toolWindowResizeState.pointerX;
+
+    setToolWindowWidth(nextWidth, false);
+}
+
+function stopToolWindowResize() {
+    if (!toolWindowResizeState) return;
+
+    const width = parseFloat(getComputedStyle(ideMain).getPropertyValue('--tool-window-width'));
+
+    setToolWindowWidth(width);
+    ideMain.classList.remove('ide-main--resizing-tool-window');
+
+    if (toolWindowResizer.hasPointerCapture(toolWindowResizeState.pointerId)) {
+        toolWindowResizer.releasePointerCapture(toolWindowResizeState.pointerId);
+    }
+
+    toolWindowResizeState = null;
+}
+
+function startToolWindowResize(event) {
+    if (window.matchMedia('(max-width: 560px)').matches) return;
+
+    event.preventDefault();
+    setToolWindowCollapsed(false);
+
+    toolWindowResizeState = {
+        pointerId: event.pointerId,
+        pointerX: event.clientX,
+        startWidth: parseFloat(getComputedStyle(ideMain).getPropertyValue('--tool-window-width')) || DEFAULT_TOOL_WINDOW_WIDTH,
+    };
+
+    ideMain.classList.add('ide-main--resizing-tool-window');
+    toolWindowResizer.setPointerCapture(event.pointerId);
+}
+
+function getBookmarksApi() {
+    return globalThis.chrome?.bookmarks || globalThis.browser?.bookmarks || null;
+}
+
+function getBookmarksUnavailableMessage() {
+    if (!globalThis.chrome && !globalThis.browser) {
+        return 'Open as Chrome extension';
+    }
+
+    return 'Reload extension to allow bookmarks';
+}
+
+function loadExpandedBookmarkFolders() {
+    try {
+        const folderIds = JSON.parse(localStorage.getItem(BOOKMARKS_EXPANDED_STORAGE_KEY));
+
+        if (!Array.isArray(folderIds)) return;
+
+        expandedBookmarkFolderIds = new Set(folderIds.filter((folderId) => typeof folderId === 'string'));
+        hasBookmarksExpansionState = true;
+    } catch (error) {
+        expandedBookmarkFolderIds = new Set();
+        hasBookmarksExpansionState = false;
+    }
+}
+
+function saveExpandedBookmarkFolders() {
+    localStorage.setItem(BOOKMARKS_EXPANDED_STORAGE_KEY, JSON.stringify([...expandedBookmarkFolderIds]));
+}
+
+function getBookmarkChildrenCount(node) {
+    if (!Array.isArray(node.children)) return 0;
+
+    return node.children.length;
+}
+
+function collectDefaultExpandedBookmarkFolders(nodes) {
+    if (hasBookmarksExpansionState) return;
+
+    const rootChildren = nodes?.[0]?.children || [];
+
+    rootChildren
+        .filter((node) => Array.isArray(node.children))
+        .forEach((node) => expandedBookmarkFolderIds.add(node.id));
+
+    hasBookmarksExpansionState = true;
+    saveExpandedBookmarkFolders();
+}
+
+function collectBookmarkFolderIds(nodes, folderIds = new Set()) {
+    (nodes || []).forEach((node) => {
+        if (!Array.isArray(node.children)) return;
+
+        folderIds.add(node.id);
+        collectBookmarkFolderIds(node.children, folderIds);
+    });
+
+    return folderIds;
+}
+
+function collapseBookmarkFolder(node) {
+    expandedBookmarkFolderIds.delete(node.id);
+    collectBookmarkFolderIds(node.children).forEach((folderId) => {
+        expandedBookmarkFolderIds.delete(folderId);
+    });
+}
+
+function collapseAllBookmarkFolders() {
+    if (!expandedBookmarkFolderIds.size) return;
+
+    expandedBookmarkFolderIds.clear();
+    saveExpandedBookmarkFolders();
+    renderBookmarksTree();
+}
+
+function syncExpandedBookmarkFolders(nodes) {
+    const folderIds = collectBookmarkFolderIds(nodes);
+    const nextExpandedFolderIds = new Set(
+        [...expandedBookmarkFolderIds].filter((folderId) => folderIds.has(folderId))
+    );
+
+    if (nextExpandedFolderIds.size === expandedBookmarkFolderIds.size) return;
+
+    expandedBookmarkFolderIds = nextExpandedFolderIds;
+    saveExpandedBookmarkFolders();
+}
+
+function setBookmarksEmptyState(message) {
+    const emptyState = document.createElement('div');
+
+    emptyState.className = 'tree-item tree-item--empty';
+    emptyState.textContent = message;
+    bookmarksTreeContainer.replaceChildren(emptyState);
+}
+
+function getBookmarksTree() {
+    const bookmarksApi = getBookmarksApi();
+
+    if (!bookmarksApi) {
+        return Promise.resolve(null);
+    }
+
+    if (globalThis.browser?.bookmarks === bookmarksApi) {
+        return bookmarksApi.getTree();
+    }
+
+    return new Promise((resolve, reject) => {
+        try {
+            bookmarksApi.getTree((tree) => {
+                const runtimeError = globalThis.chrome?.runtime?.lastError;
+
+                if (runtimeError) {
+                    reject(new Error(runtimeError.message));
+                    return;
+                }
+
+                resolve(tree);
+            });
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+function updateBookmarkNode(id, changes) {
+    const bookmarksApi = getBookmarksApi();
+
+    if (!bookmarksApi) {
+        return Promise.reject(new Error('Bookmarks API unavailable'));
+    }
+
+    if (globalThis.browser?.bookmarks === bookmarksApi) {
+        return bookmarksApi.update(id, changes);
+    }
+
+    return new Promise((resolve, reject) => {
+        bookmarksApi.update(id, changes, (node) => {
+            const runtimeError = globalThis.chrome?.runtime?.lastError;
+
+            if (runtimeError) {
+                reject(new Error(runtimeError.message));
+                return;
+            }
+
+            resolve(node);
+        });
+    });
+}
+
+function moveBookmarkNode(id, destination) {
+    const bookmarksApi = getBookmarksApi();
+
+    if (!bookmarksApi) {
+        return Promise.reject(new Error('Bookmarks API unavailable'));
+    }
+
+    if (globalThis.browser?.bookmarks === bookmarksApi) {
+        return bookmarksApi.move(id, destination);
+    }
+
+    return new Promise((resolve, reject) => {
+        bookmarksApi.move(id, destination, (node) => {
+            const runtimeError = globalThis.chrome?.runtime?.lastError;
+
+            if (runtimeError) {
+                reject(new Error(runtimeError.message));
+                return;
+            }
+
+            resolve(node);
+        });
+    });
+}
+
+function createBookmarkNode(createDetails) {
+    const bookmarksApi = getBookmarksApi();
+
+    if (!bookmarksApi) {
+        return Promise.reject(new Error('Bookmarks API unavailable'));
+    }
+
+    if (globalThis.browser?.bookmarks === bookmarksApi) {
+        return bookmarksApi.create(createDetails);
+    }
+
+    return new Promise((resolve, reject) => {
+        bookmarksApi.create(createDetails, (node) => {
+            const runtimeError = globalThis.chrome?.runtime?.lastError;
+
+            if (runtimeError) {
+                reject(new Error(runtimeError.message));
+                return;
+            }
+
+            resolve(node);
+        });
+    });
+}
+
+function removeBookmarkNode(node) {
+    const bookmarksApi = getBookmarksApi();
+    const isFolder = Array.isArray(node.children);
+    const isEmptyFolder = isFolder && node.children.length === 0;
+
+    if (!bookmarksApi) {
+        return Promise.reject(new Error('Bookmarks API unavailable'));
+    }
+
+    if (globalThis.browser?.bookmarks === bookmarksApi) {
+        return isFolder && !isEmptyFolder ? bookmarksApi.removeTree(node.id) : bookmarksApi.remove(node.id);
+    }
+
+    return new Promise((resolve, reject) => {
+        const removeCallback = () => {
+            const runtimeError = globalThis.chrome?.runtime?.lastError;
+
+            if (runtimeError) {
+                reject(new Error(runtimeError.message));
+                return;
+            }
+
+            resolve();
+        };
+
+        if (isFolder && !isEmptyFolder) {
+            bookmarksApi.removeTree(node.id, removeCallback);
+        } else {
+            bookmarksApi.remove(node.id, removeCallback);
+        }
+    });
+}
+
+function collectBookmarkUrls(node) {
+    if (node.url) return [node.url];
+
+    return (node.children || []).flatMap(collectBookmarkUrls);
+}
+
+function openUrlInCurrentTab(url) {
+    window.location.href = url;
+}
+
+function openUrlsInNewTabs(urls) {
+    urls.forEach((url) => {
+        if (globalThis.chrome?.tabs?.create) {
+            chrome.tabs.create({ url });
+            return;
+        }
+
+        window.open(url, '_blank', 'noopener');
+    });
+}
+
+function openUrlsInNewWindow(urls) {
+    if (!urls.length) return;
+
+    if (globalThis.chrome?.windows?.create) {
+        chrome.windows.create({ url: urls });
+        return;
+    }
+
+    openUrlsInNewTabs(urls);
+}
+
+function openUrlsInIncognitoWindow(urls) {
+    if (!urls.length) return;
+
+    if (globalThis.chrome?.windows?.create) {
+        chrome.windows.create({ url: urls, incognito: true });
+        return;
+    }
+
+    openUrlsInNewWindow(urls);
+}
+
+function openBookmarkManager() {
+    openUrlsInNewTabs(['chrome://bookmarks/']);
+}
+
+async function copyBookmarkUrl(url) {
+    if (!navigator.clipboard?.writeText) return;
+
+    await navigator.clipboard.writeText(url);
+}
+
+function getBookmarkCreateParentId(node) {
+    if (Array.isArray(node.children)) {
+        return node.id;
+    }
+
+    return node.parentId;
+}
+
+async function addBookmarkToNode(node) {
+    const parentId = getBookmarkCreateParentId(node);
+    const nextUrl = window.prompt('URL', 'https://');
+
+    if (nextUrl === null) return;
+
+    const trimmedUrl = nextUrl.trim();
+
+    if (!trimmedUrl) return;
+
+    const nextTitle = window.prompt('Name', trimmedUrl);
+
+    if (nextTitle === null) return;
+
+    await createBookmarkNode({
+        parentId,
+        title: nextTitle.trim() || trimmedUrl,
+        url: trimmedUrl,
+    });
+
+    expandedBookmarkFolderIds.add(parentId);
+    saveExpandedBookmarkFolders();
+}
+
+async function addFolderToNode(node) {
+    const parentId = getBookmarkCreateParentId(node);
+    const nextTitle = window.prompt('Folder name', 'New Folder');
+
+    if (nextTitle === null) return;
+
+    const title = nextTitle.trim();
+
+    if (!title) return;
+
+    const folder = await createBookmarkNode({
+        parentId,
+        title,
+    });
+
+    expandedBookmarkFolderIds.add(parentId);
+    expandedBookmarkFolderIds.add(folder.id);
+    saveExpandedBookmarkFolders();
+}
+
+async function sortBookmarkFolderByName(node) {
+    if (!Array.isArray(node.children) || node.children.length < 2) return;
+
+    const sortedChildren = [...node.children].sort((firstNode, secondNode) => {
+        const firstTitle = firstNode.title || firstNode.url || '';
+        const secondTitle = secondNode.title || secondNode.url || '';
+
+        return firstTitle.localeCompare(secondTitle, undefined, {
+            numeric: true,
+            sensitivity: 'base',
+        });
+    });
+
+    for (const [index, child] of sortedChildren.entries()) {
+        await moveBookmarkNode(child.id, {
+            parentId: node.id,
+            index,
+        });
+    }
+}
+
+async function editBookmarkNode(node) {
+    const nextTitle = window.prompt('Name', node.title || '');
+
+    if (nextTitle === null) return;
+
+    if (node.url) {
+        const nextUrl = window.prompt('URL', node.url);
+
+        if (nextUrl === null) return;
+
+        await updateBookmarkNode(node.id, {
+            title: nextTitle.trim() || node.title || nextUrl,
+            url: nextUrl.trim() || node.url,
+        });
+        return;
+    }
+
+    await updateBookmarkNode(node.id, {
+        title: nextTitle.trim() || node.title || 'Folder',
+    });
+}
+
+async function deleteBookmarkNode(node) {
+    const label = node.title || node.url || 'bookmark';
+    const message = Array.isArray(node.children)
+        ? `Delete folder "${label}" and all bookmarks inside?`
+        : `Delete bookmark "${label}"?`;
+
+    if (!window.confirm(message)) return;
+
+    await removeBookmarkNode(node);
+}
+
+function hideBookmarkContextMenu() {
+    bookmarkContextMenu.hidden = true;
+    bookmarkContextMenu.replaceChildren();
+}
+
+function createBookmarkContextMenuItem(label, action) {
+    const item = document.createElement('button');
+
+    item.className = 'bookmark-context-menu-item';
+    item.type = 'button';
+    item.setAttribute('role', 'menuitem');
+    item.textContent = label;
+    item.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        hideBookmarkContextMenu();
+
+        try {
+            await action();
+            scheduleBookmarksTreeUpdate();
+        } catch (error) {
+            window.alert(error.message || 'Bookmark action failed');
+            scheduleBookmarksTreeUpdate();
+        }
+    });
+
+    return item;
+}
+
+function createBookmarkContextMenuSeparator() {
+    const separator = document.createElement('div');
+
+    separator.className = 'bookmark-context-menu-separator';
+    separator.setAttribute('role', 'separator');
+
+    return separator;
+}
+
+function canRenameBookmarkNode(node) {
+    return !node.unmodifiable && node.parentId !== '0';
+}
+
+function canDeleteBookmarkNode(node) {
+    return !node.unmodifiable;
+}
+
+function compactContextMenuItems(items) {
+    return items.filter((item, index, list) => {
+        const isSeparator = item.classList.contains('bookmark-context-menu-separator');
+        const previousItem = list[index - 1];
+        const nextItem = list[index + 1];
+
+        if (!isSeparator) return true;
+
+        return Boolean(previousItem && nextItem) &&
+            !previousItem.classList.contains('bookmark-context-menu-separator') &&
+            !nextItem.classList.contains('bookmark-context-menu-separator');
+    });
+}
+
+function getBookmarkContextMenuItems(node) {
+    const urls = collectBookmarkUrls(node);
+    const isFolder = Array.isArray(node.children);
+    const canRename = canRenameBookmarkNode(node);
+    const canDelete = canDeleteBookmarkNode(node);
+    const canCreate = Boolean(getBookmarkCreateParentId(node));
+
+    if (isFolder) {
+        return compactContextMenuItems([
+            createBookmarkContextMenuItem('Open All', () => openUrlsInNewTabs(urls)),
+            createBookmarkContextMenuItem('Open All in New Window', () => openUrlsInNewWindow(urls)),
+            createBookmarkContextMenuItem('Open All in Incognito Window', () => openUrlsInIncognitoWindow(urls)),
+            createBookmarkContextMenuSeparator(),
+            ...(canCreate ? [
+                createBookmarkContextMenuItem('Add Bookmark...', () => addBookmarkToNode(node)),
+                createBookmarkContextMenuItem('Add Folder...', () => addFolderToNode(node)),
+            ] : []),
+            createBookmarkContextMenuSeparator(),
+            ...(node.children.length > 1 ? [
+                createBookmarkContextMenuItem('Sort by Name', () => sortBookmarkFolderByName(node)),
+            ] : []),
+            createBookmarkContextMenuSeparator(),
+            ...(canRename ? [createBookmarkContextMenuItem('Rename Folder', () => editBookmarkNode(node))] : []),
+            ...(canDelete ? [createBookmarkContextMenuItem('Delete Folder', () => deleteBookmarkNode(node))] : []),
+            createBookmarkContextMenuSeparator(),
+            createBookmarkContextMenuItem('Bookmark Manager', openBookmarkManager),
+        ]);
+    }
+
+    return compactContextMenuItems([
+        createBookmarkContextMenuItem('Open', () => openUrlInCurrentTab(node.url)),
+        createBookmarkContextMenuItem('Open in New Tab', () => openUrlsInNewTabs([node.url])),
+        createBookmarkContextMenuItem('Open in New Window', () => openUrlsInNewWindow([node.url])),
+        createBookmarkContextMenuItem('Open in Incognito Window', () => openUrlsInIncognitoWindow([node.url])),
+        createBookmarkContextMenuSeparator(),
+        ...(canCreate ? [
+            createBookmarkContextMenuItem('Add Bookmark...', () => addBookmarkToNode(node)),
+            createBookmarkContextMenuItem('Add Folder...', () => addFolderToNode(node)),
+        ] : []),
+        createBookmarkContextMenuSeparator(),
+        createBookmarkContextMenuItem('Copy URL', () => copyBookmarkUrl(node.url)),
+        ...(canRename ? [createBookmarkContextMenuItem('Edit', () => editBookmarkNode(node))] : []),
+        ...(canDelete ? [createBookmarkContextMenuItem('Delete', () => deleteBookmarkNode(node))] : []),
+        createBookmarkContextMenuSeparator(),
+        createBookmarkContextMenuItem('Bookmark Manager', openBookmarkManager),
+    ]);
+}
+
+function positionBookmarkContextMenu(x, y) {
+    const margin = 6;
+    const menuRect = bookmarkContextMenu.getBoundingClientRect();
+    const left = Math.min(x, window.innerWidth - menuRect.width - margin);
+    const top = Math.min(y, window.innerHeight - menuRect.height - margin);
+
+    bookmarkContextMenu.style.left = `${Math.max(margin, left)}px`;
+    bookmarkContextMenu.style.top = `${Math.max(margin, top)}px`;
+}
+
+function showBookmarkContextMenu(event, node) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const items = getBookmarkContextMenuItems(node).filter(Boolean);
+
+    if (!items.length) return;
+
+    bookmarkContextMenu.replaceChildren(...items);
+    bookmarkContextMenu.hidden = false;
+    positionBookmarkContextMenu(event.clientX, event.clientY);
+}
+
+function getBookmarkFaviconUrls(url) {
+    const urls = [];
+
+    if (globalThis.chrome?.runtime?.getURL) {
+        [url, getBookmarkUrlOrigin(url)]
+            .filter(Boolean)
+            .forEach((pageUrl) => {
+                [16, 32].forEach((size) => {
+                    urls.push(`${chrome.runtime.getURL('/_favicon/')}?pageUrl=${encodeURIComponent(pageUrl)}&size=${size}`);
+                });
+            });
+    }
+
+    const origin = getBookmarkUrlOrigin(url);
+
+    if (origin) {
+        urls.push(`${origin}/favicon.ico`);
+    }
+
+    return [...new Set(urls)];
+}
+
+function getBookmarkUrlOrigin(url) {
+    try {
+        const parsedUrl = new URL(url);
+
+        return parsedUrl.origin;
+    } catch (error) {
+        return '';
+    }
+}
+
+function createBookmarkFolderRow(node, depth, isExpanded) {
+    const row = document.createElement('button');
+    const disclosure = document.createElement('span');
+    const icon = document.createElement('span');
+    const title = document.createElement('span');
+    const meta = document.createElement('span');
+
+    row.className = 'tree-item bookmark-row bookmark-folder-row';
+    row.type = 'button';
+    row.style.setProperty('--tree-indent', `${depth * 14}px`);
+    row.setAttribute('aria-expanded', String(isExpanded));
+    row.title = node.title || 'Folder';
+    disclosure.className = 'tree-disclosure';
+    disclosure.textContent = isExpanded ? '⌄' : '›';
+    icon.className = 'tree-icon tree-icon--folder';
+    title.className = 'bookmark-title';
+    title.textContent = node.title || 'Folder';
+    meta.className = 'bookmark-meta';
+    meta.textContent = getBookmarkChildrenCount(node);
+
+    row.addEventListener('click', () => {
+        if (expandedBookmarkFolderIds.has(node.id)) {
+            collapseBookmarkFolder(node);
+        } else {
+            expandedBookmarkFolderIds.add(node.id);
+        }
+
+        saveExpandedBookmarkFolders();
+        renderBookmarksTree();
+    });
+    row.addEventListener('contextmenu', (event) => {
+        showBookmarkContextMenu(event, node);
+    });
+
+    row.append(disclosure, icon, title, meta);
+
+    return row;
+}
+
+function createBookmarkLinkRow(node, depth) {
+    const link = document.createElement('a');
+    const disclosure = document.createElement('span');
+    const icon = document.createElement('span');
+    const favicon = document.createElement('img');
+    const title = document.createElement('span');
+    const faviconUrls = getBookmarkFaviconUrls(node.url);
+    let faviconUrlIndex = 0;
+
+    link.className = 'tree-item bookmark-row bookmark-link';
+    link.href = node.url;
+    link.title = node.url;
+    link.style.setProperty('--tree-indent', `${depth * 14}px`);
+    disclosure.className = 'tree-disclosure tree-disclosure--empty';
+    icon.className = 'tree-icon tree-icon--bookmark bookmark-favicon';
+    favicon.alt = '';
+    favicon.loading = 'lazy';
+    favicon.decoding = 'async';
+    title.className = 'bookmark-title';
+    title.textContent = node.title || node.url;
+
+    if (faviconUrls.length) {
+        favicon.src = faviconUrls[faviconUrlIndex];
+        favicon.addEventListener('error', () => {
+            faviconUrlIndex += 1;
+
+            if (faviconUrls[faviconUrlIndex]) {
+                favicon.src = faviconUrls[faviconUrlIndex];
+                return;
+            }
+
+            icon.classList.add('bookmark-favicon--failed');
+        });
+        icon.append(favicon);
+    } else {
+        icon.classList.add('bookmark-favicon--failed');
+    }
+
+    link.addEventListener('contextmenu', (event) => {
+        showBookmarkContextMenu(event, node);
+    });
+
+    link.append(disclosure, icon, title);
+
+    return link;
+}
+
+function createBookmarkTreeNode(node, depth = 0) {
+    if (!Array.isArray(node.children)) {
+        return createBookmarkLinkRow(node, depth);
+    }
+
+    const wrapper = document.createElement('div');
+    const isExpanded = expandedBookmarkFolderIds.has(node.id);
+    const children = document.createElement('div');
+
+    wrapper.className = 'bookmark-folder';
+    children.className = 'bookmark-children';
+    children.hidden = !isExpanded;
+    wrapper.append(createBookmarkFolderRow(node, depth, isExpanded), children);
+
+    if (isExpanded) {
+        node.children
+            .map((child) => createBookmarkTreeNode(child, depth + 1))
+            .forEach((childNode) => children.append(childNode));
+    }
+
+    return wrapper;
+}
+
+async function renderBookmarksTree() {
+    const bookmarksApi = getBookmarksApi();
+
+    if (!bookmarksApi) {
+        setBookmarksEmptyState(getBookmarksUnavailableMessage());
+        return;
+    }
+
+    try {
+        const tree = await getBookmarksTree();
+        const rootChildren = tree?.[0]?.children || [];
+
+        bookmarksTreeContainer.replaceChildren();
+
+        if (!rootChildren.length) {
+            setBookmarksEmptyState('No bookmarks yet');
+            return;
+        }
+
+        collectDefaultExpandedBookmarkFolders(tree);
+        syncExpandedBookmarkFolders(tree);
+        rootChildren
+            .map((node) => createBookmarkTreeNode(node))
+            .forEach((node) => bookmarksTreeContainer.append(node));
+    } catch (error) {
+        setBookmarksEmptyState('Could not load bookmarks');
+    }
+}
+
+function scheduleBookmarksTreeUpdate() {
+    clearTimeout(bookmarksRefreshTimer);
+    bookmarksRefreshTimer = setTimeout(renderBookmarksTree, 80);
+}
+
+function bindBookmarkEvents() {
+    const bookmarksApi = getBookmarksApi();
+
+    if (!bookmarksApi) return;
+
+    [
+        'onCreated',
+        'onRemoved',
+        'onChanged',
+        'onMoved',
+        'onChildrenReordered',
+        'onImportEnded',
+    ].forEach((eventName) => {
+        bookmarksApi[eventName]?.addListener(scheduleBookmarksTreeUpdate);
+    });
 }
 
 function removeSearchHistoryItem(query, engine) {
@@ -441,72 +1257,6 @@ function removeSearchHistoryItem(query, engine) {
         .filter((item) => item.query !== query || item.engine !== engine);
 
     saveSearchHistory(history);
-    renderSearchHistory();
-}
-
-function createHistoryRow({ query, engine }) {
-    const row = document.createElement('div');
-    const searchButton = document.createElement('button');
-    const deleteButton = document.createElement('button');
-    const icon = document.createElement('span');
-    const title = document.createElement('span');
-    const meta = document.createElement('span');
-
-    row.className = 'tree-item search-history-item';
-    searchButton.className = 'history-link';
-    searchButton.type = 'button';
-    deleteButton.className = 'history-delete';
-    deleteButton.type = 'button';
-    deleteButton.setAttribute('aria-label', `Удалить запрос: ${query}`);
-    deleteButton.textContent = '×';
-    icon.className = 'tree-icon tree-icon--search';
-    icon.style.backgroundColor = MODIFIERS[engine]?.engineColor || '';
-    title.className = 'history-query';
-    meta.className = 'history-engine';
-    title.textContent = query;
-    meta.textContent = MODIFIERS[engine]?.label || engine;
-
-    searchButton.addEventListener('click', () => {
-        if (MODIFIERS[engine]) {
-            setSearchEngine(engine);
-        }
-
-        input.value = query;
-        updateFormAttributes(currentSearchEngine);
-        form.requestSubmit();
-    });
-
-    deleteButton.addEventListener('click', () => {
-        removeSearchHistoryItem(query, engine);
-        input.focus();
-    });
-
-    searchButton.append(icon, title, meta);
-    row.append(searchButton, deleteButton);
-
-    return row;
-}
-
-function renderSearchHistory() {
-    const history = getSearchHistory();
-
-    searchHistoryContainer.replaceChildren();
-
-    if (!history.length) {
-        const emptyState = document.createElement('div');
-
-        emptyState.className = 'tree-item tree-item--empty';
-        emptyState.textContent = 'No searches yet';
-        searchHistoryContainer.append(emptyState);
-        return;
-    }
-
-    history.forEach((item, index) => {
-        const row = createHistoryRow(item);
-
-        row.classList.toggle('tree-item--active', index === 0);
-        searchHistoryContainer.append(row);
-    });
 }
 
 function addSearchHistory(query, engine) {
@@ -524,7 +1274,6 @@ function addSearchHistory(query, engine) {
     });
 
     saveSearchHistory(history);
-    renderSearchHistory();
 }
 
 function updateFormAttributes(engine) {
@@ -698,6 +1447,31 @@ function scheduleSuggestionsUpdate() {
     }, SUGGESTION_DEBOUNCE);
 }
 
+function onWindowResize() {
+    const width = parseFloat(getComputedStyle(ideMain).getPropertyValue('--tool-window-width')) || DEFAULT_TOOL_WINDOW_WIDTH;
+
+    setToolWindowWidth(width, false);
+    syncSearchPopupPosition();
+    hideBookmarkContextMenu();
+}
+
+function onDocumentClick(event) {
+    hideBookmarkContextMenu();
+
+    const isCollapsed = ideMain.classList.contains('ide-main--tool-window-collapsed');
+
+    if (
+        isCollapsed ||
+        toolWindow.contains(event.target) ||
+        toolWindowStripe.contains(event.target) ||
+        bookmarkContextMenu.contains(event.target)
+    ) {
+        return;
+    }
+
+    setToolWindowCollapsed(true);
+}
+
 populateSearchEngineControls();
 currentSearchEngine = getInitialSearchEngine();
 defaultSearchEngineSelect.value = currentSearchEngine;
@@ -705,9 +1479,15 @@ setSearchEngine(currentSearchEngine);
 setTheme(getInitialTheme());
 setUiFontSize(getInitialUiFontSize());
 setUiFontFamily(getInitialUiFontFamily());
-renderSearchHistory();
+initToolWindowWidth();
+loadExpandedBookmarkFolders();
+renderBookmarksTree();
+bindBookmarkEvents();
 setToolWindowCollapsed(localStorage.getItem(TOOL_WINDOW_COLLAPSED_STORAGE_KEY) !== 'false');
 initSearchPopupPosition();
+requestAnimationFrame(() => {
+    ideMain.classList.add('ide-main--ready');
+});
 
 input.addEventListener('input', scheduleSuggestionsUpdate);
 
@@ -739,16 +1519,23 @@ toolWindowToggle.addEventListener('click', () => {
 
 toolWindowStripe.addEventListener('click', () => {
     setToolWindowCollapsed(false);
-    requestAnimationFrame(syncSearchPopupPosition);
 });
 
+toolWindowResizer.addEventListener('pointerdown', startToolWindowResize);
+toolWindowResizer.addEventListener('pointermove', onToolWindowResizePointerMove);
+toolWindowResizer.addEventListener('pointerup', stopToolWindowResize);
+toolWindowResizer.addEventListener('pointercancel', stopToolWindowResize);
 searchPopupDragHandle.addEventListener('pointerdown', startSearchPopupDrag);
 searchPopupDragHandle.addEventListener('pointermove', onSearchPopupPointerMove);
 searchPopupDragHandle.addEventListener('pointerup', stopSearchPopupDrag);
 searchPopupDragHandle.addEventListener('pointercancel', stopSearchPopupDrag);
-resetSearchPopupLayoutButton.addEventListener('click', resetSearchPopupLayout);
+resetSearchPopupLayoutButton.addEventListener('click', resetUiSettings);
+bookmarkContextMenu.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+});
+document.addEventListener('click', onDocumentClick);
 window.addEventListener('keydown', onGlobalKeydown);
-window.addEventListener('resize', syncSearchPopupPosition);
+window.addEventListener('resize', onWindowResize);
 
 form.addEventListener('submit', (event) => {
     event.preventDefault();
