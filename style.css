@@ -467,6 +467,7 @@ body[data-theme="light"] .project-title {
     background: var(--panel-bg-alt);
     font-size: var(--font-sm);
     font-weight: 600;
+    transition: color 0.16s ease, background-color 0.16s ease;
 }
 
 .tool-window-stripe:hover,
@@ -722,6 +723,7 @@ body[data-theme="light"] .project-title {
     font-size: var(--font-md);
     line-height: 1;
     outline: none;
+    transition: color 0.16s ease, border-color 0.16s ease, background-color 0.16s ease;
 }
 
 .editor-tab + .editor-tab {
@@ -753,6 +755,7 @@ body[data-theme="light"] .project-title {
     font-size: 7px;
     font-weight: 700;
     line-height: 1;
+    transition: background-color 0.16s ease, color 0.16s ease, opacity 0.16s ease;
 }
 
 .tab-icon::after {
@@ -792,6 +795,7 @@ body[data-theme="light"] .project-title {
     flex: 0 0 auto;
     border-radius: var(--radius-sm);
     opacity: 0;
+    transition: opacity 0.16s ease, background-color 0.16s ease;
 }
 
 .tab-close::before,

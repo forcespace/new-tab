@@ -1382,7 +1382,7 @@ initToolWindowWidth();
 loadExpandedBookmarkFolders();
 renderBookmarksTree();
 bindBookmarkEvents();
-setToolWindowCollapsed(localStorage.getItem(TOOL_WINDOW_COLLAPSED_STORAGE_KEY) !== 'false');
+setToolWindowCollapsed(true);
 requestAnimationFrame(() => {
     ideMain.classList.add('ide-main--ready');
 });
