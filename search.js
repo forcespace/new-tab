@@ -1,17 +1,19 @@
 const form = document.querySelector('.js-search-form');
-const select = form.querySelector('.js-search-engine-select');
-const selectWrapper = form.querySelector('.select-wrapper');
 const input = form.querySelector('.js-search-input');
-const button = form.querySelector('.search-button');
 const themeSelect = document.querySelector('.js-theme-select');
 const defaultSearchEngineSelect = document.querySelector('.js-default-search-engine-select');
 const uiFontSizeSelect = document.querySelector('.js-ui-font-size-select');
 const uiFontFamilySelect = document.querySelector('.js-ui-font-family-select');
+const searchEngineFilters = document.querySelector('.js-search-engine-filters');
 const suggestionsContainer = document.querySelector('.js-search-suggestions');
 const searchHistoryContainer = document.querySelector('.js-search-history');
+const searchWorkspace = document.querySelector('.js-search-workspace');
+const searchPopup = document.querySelector('.js-search-popup');
+const searchPopupDragHandle = document.querySelector('.js-search-popup-drag-handle');
 const ideMain = document.querySelector('.ide-main');
 const toolWindowToggle = document.querySelector('.js-tool-window-toggle');
 const toolWindowStripe = document.querySelector('.js-tool-window-stripe');
+const resetSearchPopupLayoutButton = document.querySelector('.js-reset-search-popup-layout');
 const editorTabs = document.querySelectorAll('.js-editor-tab');
 const editorPanes = document.querySelectorAll('.js-editor-pane');
 const THEME_STORAGE_KEY = 'new-tab-theme';
@@ -20,6 +22,7 @@ const TOOL_WINDOW_COLLAPSED_STORAGE_KEY = 'new-tab-tool-window-collapsed';
 const DEFAULT_SEARCH_ENGINE_STORAGE_KEY = 'new-tab-default-search-engine';
 const UI_FONT_SIZE_STORAGE_KEY = 'new-tab-ui-font-size';
 const UI_FONT_FAMILY_STORAGE_KEY = 'new-tab-ui-font-family';
+const SEARCH_POPUP_POSITION_STORAGE_KEY = 'new-tab-search-popup-position';
 const DEFAULT_THEME = 'islands-dark';
 const DEFAULT_SEARCH_ENGINE = 'yandex';
 const DEFAULT_UI_FONT_SIZE = 'default';
@@ -27,6 +30,7 @@ const DEFAULT_UI_FONT_FAMILY = 'system';
 const SUGGESTION_LIMIT = 6;
 const SUGGESTION_DEBOUNCE = 180;
 const SEARCH_HISTORY_LIMIT = 12;
+const DOUBLE_SHIFT_THRESHOLD = 500;
 const FALLBACK_SUFFIXES = [
     'официальный сайт',
     'документация',
@@ -38,6 +42,9 @@ const FALLBACK_SUFFIXES = [
 
 let suggestionAbortController = null;
 let suggestionDebounceTimer = null;
+let searchPopupDragState = null;
+let lastShiftPressedAt = 0;
+let currentSearchEngine = DEFAULT_SEARCH_ENGINE;
 
 const THEMES = new Set([
     'islands-dark',
@@ -160,7 +167,7 @@ function getInitialUiFontFamily() {
     return UI_FONT_FAMILIES.has(savedFontFamily) ? savedFontFamily : DEFAULT_UI_FONT_FAMILY;
 }
 
-function populateSearchEngineSelects() {
+function populateSearchEngineControls() {
     const options = Object.entries(MODIFIERS).map(([value, { label }]) => {
         const option = document.createElement('option');
 
@@ -170,8 +177,25 @@ function populateSearchEngineSelects() {
         return option;
     });
 
-    select.replaceChildren(...options.map((option) => option.cloneNode(true)));
     defaultSearchEngineSelect.replaceChildren(...options.map((option) => option.cloneNode(true)));
+    searchEngineFilters.replaceChildren(...Object.entries(MODIFIERS).map(([engine, { label, engineColor }]) => {
+        const filter = document.createElement('button');
+        const marker = document.createElement('span');
+
+        filter.className = 'search-filter js-search-engine-filter';
+        filter.type = 'button';
+        filter.dataset.engine = engine;
+        filter.setAttribute('aria-pressed', 'false');
+        marker.className = 'search-filter-marker';
+        marker.style.backgroundColor = engineColor;
+        filter.append(marker, label);
+        filter.addEventListener('click', () => {
+            setSearchEngine(engine);
+            input.focus();
+        });
+
+        return filter;
+    }));
 }
 
 function setTheme(theme) {
@@ -203,8 +227,16 @@ function setDefaultSearchEngine(engine) {
 
     localStorage.setItem(DEFAULT_SEARCH_ENGINE_STORAGE_KEY, engine);
     defaultSearchEngineSelect.value = engine;
-    select.value = engine;
-    onSelectChange();
+    setSearchEngine(engine);
+}
+
+function setSearchEngine(engine) {
+    if (!MODIFIERS[engine]) return;
+
+    currentSearchEngine = engine;
+    updateStyles(engine);
+    updateFormAttributes(engine);
+    scheduleSuggestionsUpdate();
 }
 
 function setActiveTab(tab) {
@@ -218,6 +250,161 @@ function setActiveTab(tab) {
     editorPanes.forEach((editorPane) => {
         editorPane.classList.toggle('editor-pane--active', editorPane.dataset.pane === tab);
     });
+}
+
+function getStoredSearchPopupPosition() {
+    try {
+        const position = JSON.parse(localStorage.getItem(SEARCH_POPUP_POSITION_STORAGE_KEY));
+
+        if (
+            typeof position?.x === 'number' &&
+            typeof position?.y === 'number'
+        ) {
+            return position;
+        }
+    } catch (error) {
+        return null;
+    }
+
+    return null;
+}
+
+function getSearchPopupBounds() {
+    const workspaceRect = searchWorkspace.getBoundingClientRect();
+    const popupRect = searchPopup.getBoundingClientRect();
+
+    return {
+        maxX: Math.max(0, workspaceRect.width - popupRect.width),
+        maxY: Math.max(0, workspaceRect.height - popupRect.height),
+    };
+}
+
+function clamp(value, min, max) {
+    return Math.min(Math.max(value, min), max);
+}
+
+function setSearchPopupPosition(x, y, shouldSave = true) {
+    if (window.matchMedia('(max-width: 560px)').matches) {
+        searchPopup.style.removeProperty('left');
+        searchPopup.style.removeProperty('top');
+        searchPopup.style.removeProperty('transform');
+        return;
+    }
+
+    const bounds = getSearchPopupBounds();
+    const nextPosition = {
+        x: clamp(x, 0, bounds.maxX),
+        y: clamp(y, 0, bounds.maxY),
+    };
+
+    searchPopup.style.left = `${nextPosition.x}px`;
+    searchPopup.style.top = `${nextPosition.y}px`;
+    searchPopup.style.transform = 'none';
+
+    if (shouldSave) {
+        localStorage.setItem(SEARCH_POPUP_POSITION_STORAGE_KEY, JSON.stringify(nextPosition));
+    }
+}
+
+function initSearchPopupPosition() {
+    const storedPosition = getStoredSearchPopupPosition();
+
+    if (storedPosition) {
+        setSearchPopupPosition(storedPosition.x, storedPosition.y, false);
+        return;
+    }
+
+    requestAnimationFrame(() => {
+        const workspaceRect = searchWorkspace.getBoundingClientRect();
+        const popupRect = searchPopup.getBoundingClientRect();
+        const x = (workspaceRect.width - popupRect.width) / 2;
+        const y = Math.min(Math.max(workspaceRect.height * 0.16, 72), 140);
+
+        setSearchPopupPosition(x, y, false);
+    });
+}
+
+function syncSearchPopupPosition() {
+    const storedPosition = getStoredSearchPopupPosition();
+
+    if (storedPosition) {
+        setSearchPopupPosition(storedPosition.x, storedPosition.y);
+    } else {
+        initSearchPopupPosition();
+    }
+}
+
+function resetSearchPopupLayout() {
+    localStorage.removeItem(SEARCH_POPUP_POSITION_STORAGE_KEY);
+    searchPopup.style.removeProperty('left');
+    searchPopup.style.removeProperty('top');
+    searchPopup.style.removeProperty('transform');
+    initSearchPopupPosition();
+    setActiveTab('search');
+    input.focus();
+}
+
+function onSearchPopupPointerMove(event) {
+    if (!searchPopupDragState) return;
+
+    const nextX = searchPopupDragState.startX + event.clientX - searchPopupDragState.pointerX;
+    const nextY = searchPopupDragState.startY + event.clientY - searchPopupDragState.pointerY;
+
+    setSearchPopupPosition(nextX, nextY, false);
+}
+
+function stopSearchPopupDrag() {
+    if (!searchPopupDragState) return;
+
+    if (searchPopupDragHandle.hasPointerCapture(searchPopupDragState.pointerId)) {
+        searchPopupDragHandle.releasePointerCapture(searchPopupDragState.pointerId);
+    }
+
+    const popupRect = searchPopup.getBoundingClientRect();
+    const workspaceRect = searchWorkspace.getBoundingClientRect();
+
+    setSearchPopupPosition(
+        popupRect.left - workspaceRect.left,
+        popupRect.top - workspaceRect.top
+    );
+    searchPopupDragState = null;
+}
+
+function startSearchPopupDrag(event) {
+    if (window.matchMedia('(max-width: 560px)').matches) return;
+
+    const popupRect = searchPopup.getBoundingClientRect();
+    const workspaceRect = searchWorkspace.getBoundingClientRect();
+
+    searchPopupDragState = {
+        pointerId: event.pointerId,
+        pointerX: event.clientX,
+        pointerY: event.clientY,
+        startX: popupRect.left - workspaceRect.left,
+        startY: popupRect.top - workspaceRect.top,
+    };
+
+    searchPopupDragHandle.setPointerCapture(event.pointerId);
+}
+
+function focusSearchInput() {
+    setActiveTab('search');
+    input.focus();
+}
+
+function onGlobalKeydown(event) {
+    if (event.key !== 'Shift' || event.repeat) return;
+
+    const now = Date.now();
+
+    if (now - lastShiftPressedAt <= DOUBLE_SHIFT_THRESHOLD) {
+        event.preventDefault();
+        focusSearchInput();
+        lastShiftPressedAt = 0;
+        return;
+    }
+
+    lastShiftPressedAt = now;
 }
 
 function getSearchHistory() {
@@ -281,12 +468,11 @@ function createHistoryRow({ query, engine }) {
 
     searchButton.addEventListener('click', () => {
         if (MODIFIERS[engine]) {
-            select.value = engine;
-            onSelectChange();
+            setSearchEngine(engine);
         }
 
         input.value = query;
-        updateFormAttributes(select.value);
+        updateFormAttributes(currentSearchEngine);
         form.requestSubmit();
     });
 
@@ -353,16 +539,12 @@ function updateStyles(engine) {
 
     if (!config) return;
 
-    selectWrapper.style.setProperty('--engine-color', config.engineColor);
-    select.style.borderColor = config.engineColor;
-    button.style.borderColor = config.engineColor;
-}
+    searchEngineFilters.querySelectorAll('.js-search-engine-filter').forEach((filter) => {
+        const isActive = filter.dataset.engine === engine;
 
-function onSelectChange() {
-    const engine = select.value;
-    updateStyles(engine);
-    updateFormAttributes(engine);
-    scheduleSuggestionsUpdate();
+        filter.classList.toggle('search-filter--active', isActive);
+        filter.setAttribute('aria-pressed', String(isActive));
+    });
 }
 
 function createSuggestionRow({ title, path, iconClass, iconColor, query, active = false, muted = false }) {
@@ -386,7 +568,7 @@ function createSuggestionRow({ title, path, iconClass, iconColor, query, active 
         row.dataset.query = query;
         row.addEventListener('click', () => {
             input.value = query;
-            updateFormAttributes(select.value);
+            updateFormAttributes(currentSearchEngine);
             form.requestSubmit();
         });
     }
@@ -401,7 +583,7 @@ function getFallbackSuggestions(query) {
 }
 
 function renderSuggestions(query, suggestions = [], isOffline = false) {
-    const engine = MODIFIERS[select.value];
+    const engine = MODIFIERS[currentSearchEngine];
     const trimmedQuery = query.trim();
 
     suggestionsContainer.replaceChildren();
@@ -484,7 +666,7 @@ async function fetchSuggestions(query, engine, signal) {
 
 function scheduleSuggestionsUpdate() {
     const query = input.value.trim();
-    const engine = select.value;
+    const engine = currentSearchEngine;
 
     clearTimeout(suggestionDebounceTimer);
 
@@ -516,17 +698,16 @@ function scheduleSuggestionsUpdate() {
     }, SUGGESTION_DEBOUNCE);
 }
 
-populateSearchEngineSelects();
-select.value = getInitialSearchEngine();
-defaultSearchEngineSelect.value = select.value;
-onSelectChange();
+populateSearchEngineControls();
+currentSearchEngine = getInitialSearchEngine();
+defaultSearchEngineSelect.value = currentSearchEngine;
+setSearchEngine(currentSearchEngine);
 setTheme(getInitialTheme());
 setUiFontSize(getInitialUiFontSize());
 setUiFontFamily(getInitialUiFontFamily());
 renderSearchHistory();
-setToolWindowCollapsed(localStorage.getItem(TOOL_WINDOW_COLLAPSED_STORAGE_KEY) === 'true');
-
-select.addEventListener('change', onSelectChange);
+setToolWindowCollapsed(localStorage.getItem(TOOL_WINDOW_COLLAPSED_STORAGE_KEY) !== 'false');
+initSearchPopupPosition();
 
 input.addEventListener('input', scheduleSuggestionsUpdate);
 
@@ -558,12 +739,21 @@ toolWindowToggle.addEventListener('click', () => {
 
 toolWindowStripe.addEventListener('click', () => {
     setToolWindowCollapsed(false);
+    requestAnimationFrame(syncSearchPopupPosition);
 });
+
+searchPopupDragHandle.addEventListener('pointerdown', startSearchPopupDrag);
+searchPopupDragHandle.addEventListener('pointermove', onSearchPopupPointerMove);
+searchPopupDragHandle.addEventListener('pointerup', stopSearchPopupDrag);
+searchPopupDragHandle.addEventListener('pointercancel', stopSearchPopupDrag);
+resetSearchPopupLayoutButton.addEventListener('click', resetSearchPopupLayout);
+window.addEventListener('keydown', onGlobalKeydown);
+window.addEventListener('resize', syncSearchPopupPosition);
 
 form.addEventListener('submit', (event) => {
     event.preventDefault();
 
-    const engine = select.value;
+    const engine = currentSearchEngine;
     updateFormAttributes(engine);
     addSearchHistory(input.value, engine);
 

@@ -61,9 +61,9 @@
                     <span>10</span>
                 </div>
 
-                <div class="workspace">
-                    <section class="search-popup" aria-label="Поиск">
-                        <div class="search-popup-header">
+                <div class="workspace workspace--search js-search-workspace">
+                    <section class="search-popup js-search-popup" aria-label="Поиск">
+                        <div class="search-popup-header js-search-popup-drag-handle">
                             <span>Search Everywhere</span>
                             <span class="shortcut-key">Double Shift</span>
                         </div>
@@ -81,13 +81,9 @@
                               autofocus
                             />
 
-                            <div class="select-wrapper">
-                                <select class="search-engine-select js-search-engine-select" aria-label="Выбор поисковой системы"></select>
-                            </div>
-
-                            <button class="search-button" type="submit">Enter</button>
                         </form>
 
+                        <div class="search-filters js-search-engine-filters" aria-label="Фильтры поисковика"></div>
                         <div class="search-suggestions js-search-suggestions" aria-label="Результаты поиска"></div>
                     </section>
                 </div>
@@ -151,18 +147,19 @@
                                     <option value="mono">Monospace</option>
                                 </select>
                             </label>
+
+                            <div class="settings-field">
+                                <span class="settings-label">Search Popup Layout</span>
+                                <button class="settings-button js-reset-search-popup-layout" type="button">
+                                    Reset Position
+                                </button>
+                            </div>
                         </div>
                     </section>
                 </div>
             </div>
         </section>
     </main>
-
-    <footer class="status-bar" aria-hidden="true">
-        <span>main</span>
-        <span>UTF-8</span>
-        <span>4 spaces</span>
-    </footer>
 </div>
 
 <script src="search.js"></script>
