@@ -7,9 +7,6 @@ const uiFontFamilySelect = document.querySelector('.js-ui-font-family-select');
 const searchEngineFilters = document.querySelector('.js-search-engine-filters');
 const suggestionsContainer = document.querySelector('.js-search-suggestions');
 const bookmarksTreeContainer = document.querySelector('.js-bookmarks-tree');
-const searchWorkspace = document.querySelector('.js-search-workspace');
-const searchPopup = document.querySelector('.js-search-popup');
-const searchPopupDragHandle = document.querySelector('.js-search-popup-drag-handle');
 const ideMain = document.querySelector('.ide-main');
 const toolWindow = document.querySelector('.tool-window');
 const toolWindowTitle = document.querySelector('.js-tool-window-title');
@@ -51,11 +48,12 @@ const FALLBACK_SUFFIXES = [
 
 let suggestionAbortController = null;
 let suggestionDebounceTimer = null;
-let searchPopupDragState = null;
 let toolWindowResizeState = null;
 let bookmarksRefreshTimer = null;
 let expandedBookmarkFolderIds = new Set();
+const bookmarkFaviconUrlsCache = new Map();
 let hasBookmarksExpansionState = false;
+let shouldResetBookmarkFoldersOnOpen = false;
 let lastShiftPressedAt = 0;
 let currentSearchEngine = DEFAULT_SEARCH_ENGINE;
 
@@ -265,88 +263,6 @@ function setActiveTab(tab) {
     });
 }
 
-function getStoredSearchPopupPosition() {
-    try {
-        const position = JSON.parse(localStorage.getItem(SEARCH_POPUP_POSITION_STORAGE_KEY));
-
-        if (
-            typeof position?.x === 'number' &&
-            typeof position?.y === 'number'
-        ) {
-            return position;
-        }
-    } catch (error) {
-        return null;
-    }
-
-    return null;
-}
-
-function getSearchPopupBounds() {
-    const workspaceRect = searchWorkspace.getBoundingClientRect();
-    const popupRect = searchPopup.getBoundingClientRect();
-
-    return {
-        maxX: Math.max(0, workspaceRect.width - popupRect.width),
-        maxY: Math.max(0, workspaceRect.height - popupRect.height),
-    };
-}
-
-function clamp(value, min, max) {
-    return Math.min(Math.max(value, min), max);
-}
-
-function setSearchPopupPosition(x, y, shouldSave = true) {
-    if (window.matchMedia('(max-width: 560px)').matches) {
-        searchPopup.style.removeProperty('left');
-        searchPopup.style.removeProperty('top');
-        searchPopup.style.removeProperty('transform');
-        return;
-    }
-
-    const bounds = getSearchPopupBounds();
-    const nextPosition = {
-        x: clamp(x, 0, bounds.maxX),
-        y: clamp(y, 0, bounds.maxY),
-    };
-
-    searchPopup.style.left = `${nextPosition.x}px`;
-    searchPopup.style.top = `${nextPosition.y}px`;
-    searchPopup.style.transform = 'none';
-
-    if (shouldSave) {
-        localStorage.setItem(SEARCH_POPUP_POSITION_STORAGE_KEY, JSON.stringify(nextPosition));
-    }
-}
-
-function initSearchPopupPosition() {
-    const storedPosition = getStoredSearchPopupPosition();
-
-    if (storedPosition) {
-        setSearchPopupPosition(storedPosition.x, storedPosition.y, false);
-        return;
-    }
-
-    requestAnimationFrame(() => {
-        const workspaceRect = searchWorkspace.getBoundingClientRect();
-        const popupRect = searchPopup.getBoundingClientRect();
-        const x = (workspaceRect.width - popupRect.width) / 2;
-        const y = Math.min(Math.max(workspaceRect.height * 0.16, 72), 140);
-
-        setSearchPopupPosition(x, y, false);
-    });
-}
-
-function syncSearchPopupPosition() {
-    const storedPosition = getStoredSearchPopupPosition();
-
-    if (storedPosition) {
-        setSearchPopupPosition(storedPosition.x, storedPosition.y);
-    } else {
-        initSearchPopupPosition();
-    }
-}
-
 function resetUiSettings() {
     localStorage.removeItem(THEME_STORAGE_KEY);
     localStorage.removeItem(UI_FONT_SIZE_STORAGE_KEY);
@@ -357,55 +273,8 @@ function resetUiSettings() {
     setUiFontSize(DEFAULT_UI_FONT_SIZE);
     setUiFontFamily(DEFAULT_UI_FONT_FAMILY);
     setDefaultSearchEngine(DEFAULT_SEARCH_ENGINE);
-    searchPopup.style.removeProperty('left');
-    searchPopup.style.removeProperty('top');
-    searchPopup.style.removeProperty('transform');
-    initSearchPopupPosition();
     setActiveTab('search');
     input.focus();
-}
-
-function onSearchPopupPointerMove(event) {
-    if (!searchPopupDragState) return;
-
-    const nextX = searchPopupDragState.startX + event.clientX - searchPopupDragState.pointerX;
-    const nextY = searchPopupDragState.startY + event.clientY - searchPopupDragState.pointerY;
-
-    setSearchPopupPosition(nextX, nextY, false);
-}
-
-function stopSearchPopupDrag() {
-    if (!searchPopupDragState) return;
-
-    if (searchPopupDragHandle.hasPointerCapture(searchPopupDragState.pointerId)) {
-        searchPopupDragHandle.releasePointerCapture(searchPopupDragState.pointerId);
-    }
-
-    const popupRect = searchPopup.getBoundingClientRect();
-    const workspaceRect = searchWorkspace.getBoundingClientRect();
-
-    setSearchPopupPosition(
-        popupRect.left - workspaceRect.left,
-        popupRect.top - workspaceRect.top
-    );
-    searchPopupDragState = null;
-}
-
-function startSearchPopupDrag(event) {
-    if (window.matchMedia('(max-width: 560px)').matches) return;
-
-    const popupRect = searchPopup.getBoundingClientRect();
-    const workspaceRect = searchWorkspace.getBoundingClientRect();
-
-    searchPopupDragState = {
-        pointerId: event.pointerId,
-        pointerX: event.clientX,
-        pointerY: event.clientY,
-        startX: popupRect.left - workspaceRect.left,
-        startY: popupRect.top - workspaceRect.top,
-    };
-
-    searchPopupDragHandle.setPointerCapture(event.pointerId);
 }
 
 function focusSearchInput() {
@@ -464,12 +333,17 @@ function updateToolWindowLabels() {
 }
 
 function setToolWindowCollapsed(isCollapsed) {
+    const wasCollapsed = ideMain.classList.contains('ide-main--tool-window-collapsed');
+
     ideMain.classList.toggle('ide-main--tool-window-collapsed', isCollapsed);
     localStorage.setItem(TOOL_WINDOW_COLLAPSED_STORAGE_KEY, String(isCollapsed));
     updateToolWindowLabels();
 
     if (isCollapsed) {
         collapseAllBookmarkFolders();
+    } else if (wasCollapsed) {
+        shouldResetBookmarkFoldersOnOpen = true;
+        renderBookmarksTree();
     }
 }
 
@@ -584,6 +458,24 @@ function collectDefaultExpandedBookmarkFolders(nodes) {
         .filter((node) => Array.isArray(node.children))
         .forEach((node) => expandedBookmarkFolderIds.add(node.id));
 
+    hasBookmarksExpansionState = true;
+    saveExpandedBookmarkFolders();
+}
+
+function getBookmarksBarFolder(rootChildren) {
+    const folders = rootChildren.filter((node) => Array.isArray(node.children));
+
+    return folders.find((node) => node.id === '1') ||
+        folders.find((node) => /^(bookmarks bar|панель закладок)$/i.test(node.title || '')) ||
+        folders[0] ||
+        null;
+}
+
+function expandBookmarksBarFolderOnly(nodes) {
+    const rootChildren = nodes?.[0]?.children || [];
+    const bookmarksBarFolder = getBookmarksBarFolder(rootChildren);
+
+    expandedBookmarkFolderIds = bookmarksBarFolder ? new Set([bookmarksBarFolder.id]) : new Set();
     hasBookmarksExpansionState = true;
     saveExpandedBookmarkFolders();
 }
@@ -1061,25 +953,28 @@ function showBookmarkContextMenu(event, node) {
 }
 
 function getBookmarkFaviconUrls(url) {
-    const urls = [];
+    if (bookmarkFaviconUrlsCache.has(url)) {
+        return bookmarkFaviconUrlsCache.get(url);
+    }
 
-    if (globalThis.chrome?.runtime?.getURL) {
+    const urls = [];
+    const faviconBaseUrl = globalThis.chrome?.runtime?.getURL?.('/_favicon/');
+
+    if (faviconBaseUrl) {
         [url, getBookmarkUrlOrigin(url)]
             .filter(Boolean)
             .forEach((pageUrl) => {
                 [16, 32].forEach((size) => {
-                    urls.push(`${chrome.runtime.getURL('/_favicon/')}?pageUrl=${encodeURIComponent(pageUrl)}&size=${size}`);
+                    urls.push(`${faviconBaseUrl}?pageUrl=${encodeURIComponent(pageUrl)}&size=${size}`);
                 });
             });
     }
 
-    const origin = getBookmarkUrlOrigin(url);
+    const uniqueUrls = [...new Set(urls)];
 
-    if (origin) {
-        urls.push(`${origin}/favicon.ico`);
-    }
+    bookmarkFaviconUrlsCache.set(url, uniqueUrls);
 
-    return [...new Set(urls)];
+    return uniqueUrls;
 }
 
 function getBookmarkUrlOrigin(url) {
@@ -1147,7 +1042,6 @@ function createBookmarkLinkRow(node, depth) {
     disclosure.className = 'tree-disclosure tree-disclosure--empty';
     icon.className = 'tree-icon tree-icon--bookmark bookmark-favicon';
     favicon.alt = '';
-    favicon.loading = 'lazy';
     favicon.decoding = 'async';
     title.className = 'bookmark-title';
     title.textContent = node.title || node.url;
@@ -1220,7 +1114,13 @@ async function renderBookmarksTree() {
             return;
         }
 
-        collectDefaultExpandedBookmarkFolders(tree);
+        if (shouldResetBookmarkFoldersOnOpen) {
+            expandBookmarksBarFolderOnly(tree);
+            shouldResetBookmarkFoldersOnOpen = false;
+        } else {
+            collectDefaultExpandedBookmarkFolders(tree);
+        }
+
         syncExpandedBookmarkFolders(tree);
         rootChildren
             .map((node) => createBookmarkTreeNode(node))
@@ -1451,7 +1351,6 @@ function onWindowResize() {
     const width = parseFloat(getComputedStyle(ideMain).getPropertyValue('--tool-window-width')) || DEFAULT_TOOL_WINDOW_WIDTH;
 
     setToolWindowWidth(width, false);
-    syncSearchPopupPosition();
     hideBookmarkContextMenu();
 }
 
@@ -1484,7 +1383,6 @@ loadExpandedBookmarkFolders();
 renderBookmarksTree();
 bindBookmarkEvents();
 setToolWindowCollapsed(localStorage.getItem(TOOL_WINDOW_COLLAPSED_STORAGE_KEY) !== 'false');
-initSearchPopupPosition();
 requestAnimationFrame(() => {
     ideMain.classList.add('ide-main--ready');
 });
@@ -1525,10 +1423,6 @@ toolWindowResizer.addEventListener('pointerdown', startToolWindowResize);
 toolWindowResizer.addEventListener('pointermove', onToolWindowResizePointerMove);
 toolWindowResizer.addEventListener('pointerup', stopToolWindowResize);
 toolWindowResizer.addEventListener('pointercancel', stopToolWindowResize);
-searchPopupDragHandle.addEventListener('pointerdown', startSearchPopupDrag);
-searchPopupDragHandle.addEventListener('pointermove', onSearchPopupPointerMove);
-searchPopupDragHandle.addEventListener('pointerup', stopSearchPopupDrag);
-searchPopupDragHandle.addEventListener('pointercancel', stopSearchPopupDrag);
 resetSearchPopupLayoutButton.addEventListener('click', resetUiSettings);
 bookmarkContextMenu.addEventListener('contextmenu', (event) => {
     event.preventDefault();

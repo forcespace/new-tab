@@ -150,17 +150,17 @@ body[data-theme="light-header"] {
     --page-bg: #f1f3f7;
     --shell-bg: #ffffff;
     --header-bg: #2b2f36;
-    --header-border: #3b414b;
+    --header-border: #d8dde6;
     --panel-bg: #f3f5f8;
     --panel-bg-alt: #fbfcfd;
     --editor-bg: #ffffff;
-    --editor-line: #eceff4;
+    --editor-line: #e8ebf1;
     --control-bg: #ffffff;
     --control-bg-hover: #f2f5fa;
     --control-text: #1f2328;
     --muted-text: #6e7681;
     --strong-text: #171a1f;
-    --control-border: #c9d1da;
+    --control-border: #d3dae4;
     --accent: #3574f0;
     --accent-soft: rgba(53, 116, 240, 0.12);
     --focus-ring: rgba(53, 116, 240, 0.23);
@@ -170,7 +170,7 @@ body[data-theme="light-header"] {
 
 body[data-theme="light"] {
     --header-bg: #2b2f36;
-    --header-border: #3b414b;
+    --header-border: #d8dde6;
 }
 
 body[data-theme="light-header"] {
@@ -885,6 +885,7 @@ body[data-theme="light"] .project-title {
     outline: none;
     background-color: var(--control-bg);
     font-size: var(--font-md);
+    transition: border-color 0.16s ease, background-color 0.16s ease, box-shadow 0.16s ease, color 0.16s ease;
 }
 
 .settings-select:hover {
@@ -907,6 +908,7 @@ body[data-theme="light"] .project-title {
     border-radius: var(--radius-md);
     background: var(--control-bg);
     font-size: var(--font-md);
+    transition: border-color 0.16s ease, background-color 0.16s ease, box-shadow 0.16s ease, color 0.16s ease;
 }
 
 .settings-button:hover {
@@ -921,10 +923,10 @@ body[data-theme="light"] .project-title {
 }
 
 .search-popup {
-    position: absolute;
-    top: clamp(88px, 16vh, 140px);
+    position: fixed;
+    top: calc(40% - 66px);
     left: 50%;
-    width: min(960px, calc(100% - 88px));
+    width: min(960px, calc(100vw - 88px));
     max-width: 960px;
     overflow: hidden;
     transform: translateX(-50%);
@@ -934,7 +936,6 @@ body[data-theme="light"] .project-title {
     opacity: 0.8;
     box-shadow: 0 18px 54px rgba(0, 0, 0, 0.28);
     transition: opacity 0.18s ease, box-shadow 0.2s ease;
-    touch-action: none;
 }
 
 .search-popup:hover,
@@ -951,7 +952,6 @@ body[data-theme="light"] .project-title {
     padding: 0 12px;
     color: var(--strong-text);
     border-bottom: 1px solid var(--header-border);
-    cursor: move;
     user-select: none;
     font-size: var(--font-md);
     font-weight: 600;
@@ -1136,10 +1136,6 @@ body[data-theme="light"] .project-title {
         padding: clamp(72px, 14vh, 112px) 28px 28px;
     }
 
-    .search-popup {
-        top: clamp(72px, 14vh, 112px);
-    }
-
     .workspace--settings {
         padding: 28px;
     }
@@ -1195,12 +1191,6 @@ body[data-theme="light"] .project-title {
         padding: 32px 16px;
     }
 
-    .search-popup {
-        position: static;
-        min-width: 0;
-        transform: none;
-    }
-
     .workspace--settings {
         padding: 24px 16px;
     }
@@ -1212,7 +1202,8 @@ body[data-theme="light"] .project-title {
 
     .search-popup {
         flex-direction: column;
-        width: 100%;
+        width: calc(100vw - 32px);
+        min-width: 0;
     }
 
     .search-form {
