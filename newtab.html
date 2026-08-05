@@ -6,25 +6,112 @@
     <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
-<form class="search-form js-search-form" action="https://yandex.ru/search/" method="GET">
-    <div class="select-wrapper">
-        <select class="search-engine-select js-search-engine-select" aria-label="Выбор поисковой системы">
-            <option value="yandex" selected>Яндекс</option>
-            <option value="google">Google</option>
-        </select>
-    </div>
+<div class="ide-shell">
+    <header class="ide-header">
+        <div class="window-controls" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+        </div>
 
-    <input
-      class="search-input js-search-input"
-      name="text"
-      type="search"
-      placeholder="Поиск"
-      autocomplete="off"
-      required
-      autofocus
-    />
-    <button class="search-button" type="submit">Найти</button>
-</form>
+        <div class="project-title">
+            <span class="product-mark">PS</span>
+            <span>new-tab</span>
+        </div>
+
+        <div class="header-actions">
+            <label class="theme-control">
+                <span>Theme</span>
+                <select class="theme-select js-theme-select" aria-label="Выбор темы интерфейса">
+                    <option value="islands-dark" selected>Islands Dark</option>
+                    <option value="islands-light">Islands Light</option>
+                    <option value="islands-darcula">Islands Darcula</option>
+                    <option value="dark">Dark</option>
+                    <option value="light">Light</option>
+                    <option value="light-header">Light with Light Header</option>
+                    <option value="darcula">Darcula</option>
+                    <option value="high-contrast">High Contrast</option>
+                </select>
+            </label>
+        </div>
+    </header>
+
+    <main class="ide-main">
+        <aside class="tool-window" aria-label="Панель проекта">
+            <div class="tool-window-title">Project</div>
+            <div class="project-tree">
+                <div class="tree-item tree-item--active">
+                    <span class="tree-icon tree-icon--folder"></span>
+                    new-tab
+                </div>
+                <div class="tree-item">
+                    <span class="tree-icon tree-icon--html"></span>
+                    newtab.html
+                </div>
+                <div class="tree-item">
+                    <span class="tree-icon tree-icon--css"></span>
+                    style.css
+                </div>
+                <div class="tree-item">
+                    <span class="tree-icon tree-icon--js"></span>
+                    search.js
+                </div>
+            </div>
+        </aside>
+
+        <section class="editor-area" aria-label="Рабочая область">
+            <div class="editor-tabs" aria-hidden="true">
+                <div class="editor-tab editor-tab--active">
+                    <span class="tab-icon"></span>
+                    search.php
+                </div>
+            </div>
+
+            <div class="editor-pane">
+                <div class="line-gutter" aria-hidden="true">
+                    <span>1</span>
+                    <span>2</span>
+                    <span>3</span>
+                    <span>4</span>
+                    <span>5</span>
+                    <span>6</span>
+                    <span>7</span>
+                    <span>8</span>
+                    <span>9</span>
+                    <span>10</span>
+                </div>
+
+                <div class="workspace">
+                    <form class="search-form js-search-form" action="https://yandex.ru/search/" method="GET">
+                        <div class="select-wrapper">
+                            <select class="search-engine-select js-search-engine-select" aria-label="Выбор поисковой системы">
+                                <option value="yandex" selected>Яндекс</option>
+                                <option value="google">Google</option>
+                            </select>
+                        </div>
+
+                        <input
+                          class="search-input js-search-input"
+                          name="text"
+                          type="search"
+                          placeholder="Search Everywhere"
+                          autocomplete="off"
+                          required
+                          autofocus
+                        />
+                        <button class="search-button" type="submit">Найти</button>
+                    </form>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="status-bar" aria-hidden="true">
+        <span>main</span>
+        <span>UTF-8</span>
+        <span>4 spaces</span>
+    </footer>
+</div>
 
 <script src="search.js"></script>
 </body>
