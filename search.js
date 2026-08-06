@@ -37,6 +37,7 @@ const SUGGESTION_LIMIT = 6;
 const SUGGESTION_DEBOUNCE = 180;
 const SEARCH_HISTORY_LIMIT = 12;
 const DOUBLE_SHIFT_THRESHOLD = 500;
+const BOOKMARK_FOLDER_ANIMATION_DURATION = 300;
 const FALLBACK_SUFFIXES = [
     'официальный сайт',
     'документация',
@@ -52,6 +53,7 @@ let toolWindowResizeState = null;
 let bookmarksRefreshTimer = null;
 let expandedBookmarkFolderIds = new Set();
 const bookmarkFaviconUrlsCache = new Map();
+const bookmarkChildrenAnimationCleanups = new WeakMap();
 let hasBookmarksExpansionState = false;
 let shouldResetBookmarkFoldersOnOpen = false;
 let lastShiftPressedAt = 0;
@@ -987,7 +989,92 @@ function getBookmarkUrlOrigin(url) {
     }
 }
 
-function createBookmarkFolderRow(node, depth, isExpanded) {
+function setBookmarkFolderExpandedState(wrapper, row, isExpanded) {
+    const disclosure = row.querySelector('.tree-disclosure');
+
+    wrapper.classList.toggle('bookmark-folder--expanded', isExpanded);
+    row.setAttribute('aria-expanded', String(isExpanded));
+
+    if (disclosure) {
+        disclosure.textContent = '›';
+    }
+}
+
+function animateBookmarkChildren(children, isExpanded, onAnimationEnd) {
+    const previousCleanup = bookmarkChildrenAnimationCleanups.get(children);
+
+    if (previousCleanup) {
+        previousCleanup();
+    }
+
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        children.hidden = !isExpanded;
+        children.style.height = '';
+        children.style.opacity = '';
+        onAnimationEnd?.();
+        return;
+    }
+
+    let timeoutId = 0;
+
+    const finishAnimation = () => {
+        children.removeEventListener('transitionend', handleTransitionEnd);
+        clearTimeout(timeoutId);
+        bookmarkChildrenAnimationCleanups.delete(children);
+        children.classList.remove('bookmark-children--animating');
+        children.style.height = '';
+        children.style.opacity = '';
+
+        if (!isExpanded) {
+            children.hidden = true;
+        }
+
+        onAnimationEnd?.();
+    };
+    const cleanup = () => {
+        children.removeEventListener('transitionend', handleTransitionEnd);
+        clearTimeout(timeoutId);
+        bookmarkChildrenAnimationCleanups.delete(children);
+        children.classList.remove('bookmark-children--animating');
+    };
+
+    function handleTransitionEnd(event) {
+        if (event.target !== children || event.propertyName !== 'height') return;
+
+        finishAnimation();
+    }
+
+    bookmarkChildrenAnimationCleanups.set(children, cleanup);
+    children.classList.add('bookmark-children--animating');
+
+    if (isExpanded) {
+        children.hidden = false;
+        children.style.height = '0px';
+        children.style.opacity = '0';
+        void children.offsetHeight;
+        children.style.height = `${children.scrollHeight}px`;
+        children.style.opacity = '1';
+    } else {
+        children.style.height = `${children.scrollHeight}px`;
+        children.style.opacity = '1';
+        void children.offsetHeight;
+        children.style.height = '0px';
+        children.style.opacity = '0';
+    }
+
+    children.addEventListener('transitionend', handleTransitionEnd);
+    timeoutId = window.setTimeout(finishAnimation, BOOKMARK_FOLDER_ANIMATION_DURATION + 80);
+}
+
+function renderBookmarkChildren(node, depth, children) {
+    if (children.hasChildNodes()) return;
+
+    node.children
+        .map((child) => createBookmarkTreeNode(child, depth + 1))
+        .forEach((childNode) => children.append(childNode));
+}
+
+function createBookmarkFolderRow(node, depth, isExpanded, onToggle) {
     const row = document.createElement('button');
     const disclosure = document.createElement('span');
     const icon = document.createElement('span');
@@ -1000,23 +1087,14 @@ function createBookmarkFolderRow(node, depth, isExpanded) {
     row.setAttribute('aria-expanded', String(isExpanded));
     row.title = node.title || 'Folder';
     disclosure.className = 'tree-disclosure';
-    disclosure.textContent = isExpanded ? '⌄' : '›';
+    disclosure.textContent = '›';
     icon.className = 'tree-icon tree-icon--folder';
     title.className = 'bookmark-title';
     title.textContent = node.title || 'Folder';
     meta.className = 'bookmark-meta';
     meta.textContent = getBookmarkChildrenCount(node);
 
-    row.addEventListener('click', () => {
-        if (expandedBookmarkFolderIds.has(node.id)) {
-            collapseBookmarkFolder(node);
-        } else {
-            expandedBookmarkFolderIds.add(node.id);
-        }
-
-        saveExpandedBookmarkFolders();
-        renderBookmarksTree();
-    });
+    row.addEventListener('click', onToggle);
     row.addEventListener('contextmenu', (event) => {
         showBookmarkContextMenu(event, node);
     });
@@ -1084,13 +1162,32 @@ function createBookmarkTreeNode(node, depth = 0) {
     wrapper.className = 'bookmark-folder';
     children.className = 'bookmark-children';
     children.hidden = !isExpanded;
-    wrapper.append(createBookmarkFolderRow(node, depth, isExpanded), children);
 
     if (isExpanded) {
-        node.children
-            .map((child) => createBookmarkTreeNode(child, depth + 1))
-            .forEach((childNode) => children.append(childNode));
+        wrapper.classList.add('bookmark-folder--expanded');
+        renderBookmarkChildren(node, depth, children);
     }
+
+    const row = createBookmarkFolderRow(node, depth, isExpanded, () => {
+        const shouldExpand = !expandedBookmarkFolderIds.has(node.id);
+
+        if (shouldExpand) {
+            expandedBookmarkFolderIds.add(node.id);
+            renderBookmarkChildren(node, depth, children);
+        } else {
+            collapseBookmarkFolder(node);
+        }
+
+        saveExpandedBookmarkFolders();
+        setBookmarkFolderExpandedState(wrapper, row, shouldExpand);
+        animateBookmarkChildren(children, shouldExpand, () => {
+            if (!shouldExpand) {
+                children.replaceChildren();
+            }
+        });
+    });
+
+    wrapper.prepend(row, children);
 
     return wrapper;
 }
