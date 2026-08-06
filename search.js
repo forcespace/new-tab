@@ -56,6 +56,7 @@ let hasBookmarksExpansionState = false;
 let shouldResetBookmarkFoldersOnOpen = false;
 let lastShiftPressedAt = 0;
 let currentSearchEngine = DEFAULT_SEARCH_ENGINE;
+let activeSuggestionIndex = -1;
 
 const THEMES = new Set([
     'islands-dark',
@@ -245,6 +246,7 @@ function setSearchEngine(engine) {
     if (!MODIFIERS[engine]) return;
 
     currentSearchEngine = engine;
+    activeSuggestionIndex = -1;
     updateStyles(engine);
     updateFormAttributes(engine);
     scheduleSuggestionsUpdate();
@@ -1196,7 +1198,7 @@ function updateStyles(engine) {
     });
 }
 
-function createSuggestionRow({ title, path, iconClass, iconColor, query, active = false, muted = false }) {
+function createSuggestionRow({ title, path, iconClass, iconColor, query, index = -1, active = false, muted = false }) {
     const row = document.createElement(query ? 'button' : 'div');
     const icon = document.createElement('span');
     const titleNode = document.createElement('span');
@@ -1215,6 +1217,11 @@ function createSuggestionRow({ title, path, iconClass, iconColor, query, active 
     if (query) {
         row.type = 'button';
         row.dataset.query = query;
+        row.dataset.suggestionIndex = String(index);
+        row.id = `search-suggestion-${index}`;
+        row.tabIndex = -1;
+        row.setAttribute('role', 'option');
+        row.setAttribute('aria-selected', String(active));
         row.addEventListener('click', () => {
             input.value = query;
             updateFormAttributes(currentSearchEngine);
@@ -1227,6 +1234,60 @@ function createSuggestionRow({ title, path, iconClass, iconColor, query, active 
     return row;
 }
 
+function getSuggestionRows() {
+    return [...suggestionsContainer.querySelectorAll('.suggestion-row[data-query]')];
+}
+
+function setActiveSuggestionIndex(index, shouldUpdateInput = false) {
+    const rows = getSuggestionRows();
+
+    if (!rows.length) {
+        activeSuggestionIndex = -1;
+        input.removeAttribute('aria-activedescendant');
+        return;
+    }
+
+    activeSuggestionIndex = Math.min(Math.max(index, 0), rows.length - 1);
+
+    rows.forEach((row, rowIndex) => {
+        const isActive = rowIndex === activeSuggestionIndex;
+
+        row.classList.toggle('suggestion-row--active', isActive);
+        row.setAttribute('aria-selected', String(isActive));
+
+        if (isActive) {
+            input.setAttribute('aria-activedescendant', row.id);
+
+            if (shouldUpdateInput) {
+                input.value = row.dataset.query;
+                row.scrollIntoView({ block: 'nearest' });
+            }
+        }
+    });
+}
+
+function moveActiveSuggestion(direction) {
+    const rows = getSuggestionRows();
+
+    if (!rows.length) return false;
+
+    const nextIndex = activeSuggestionIndex === -1
+        ? 0
+        : (activeSuggestionIndex + direction + rows.length) % rows.length;
+
+    setActiveSuggestionIndex(nextIndex, true);
+
+    return true;
+}
+
+function onSearchInputKeydown(event) {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+
+    if (moveActiveSuggestion(event.key === 'ArrowDown' ? 1 : -1)) {
+        event.preventDefault();
+    }
+}
+
 function getFallbackSuggestions(query) {
     return FALLBACK_SUFFIXES.map((suffix) => `${query} ${suffix}`);
 }
@@ -1236,8 +1297,10 @@ function renderSuggestions(query, suggestions = [], isOffline = false) {
     const trimmedQuery = query.trim();
 
     suggestionsContainer.replaceChildren();
+    input.removeAttribute('aria-activedescendant');
 
     if (!trimmedQuery) {
+        activeSuggestionIndex = -1;
         return;
     }
 
@@ -1247,18 +1310,20 @@ function renderSuggestions(query, suggestions = [], isOffline = false) {
         iconClass: 'suggestion-icon--engine',
         iconColor: engine.engineColor,
         query: trimmedQuery,
+        index: 0,
         active: true,
     }));
 
     suggestions
         .filter((suggestion) => suggestion.toLowerCase() !== trimmedQuery.toLowerCase())
         .slice(0, SUGGESTION_LIMIT)
-        .forEach((suggestion) => {
+        .forEach((suggestion, suggestionIndex) => {
             suggestionsContainer.append(createSuggestionRow({
                 title: suggestion,
                 path: engine.label,
                 iconClass: 'suggestion-icon--search',
                 query: suggestion,
+                index: suggestionIndex + 1,
             }));
         });
 
@@ -1270,6 +1335,8 @@ function renderSuggestions(query, suggestions = [], isOffline = false) {
             muted: true,
         }));
     }
+
+    setActiveSuggestionIndex(0);
 }
 
 function parseSuggestionResponse(text) {
@@ -1387,7 +1454,12 @@ requestAnimationFrame(() => {
     ideMain.classList.add('ide-main--ready');
 });
 
+suggestionsContainer.id = 'search-suggestions';
+suggestionsContainer.setAttribute('role', 'listbox');
+input.setAttribute('aria-controls', suggestionsContainer.id);
+input.setAttribute('aria-autocomplete', 'list');
 input.addEventListener('input', scheduleSuggestionsUpdate);
+input.addEventListener('keydown', onSearchInputKeydown);
 
 themeSelect.addEventListener('change', () => {
     setTheme(themeSelect.value);
