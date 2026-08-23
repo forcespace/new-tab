@@ -51,6 +51,8 @@ let suggestionAbortController = null;
 let suggestionDebounceTimer = null;
 let toolWindowResizeState = null;
 let bookmarksRefreshTimer = null;
+let bookmarkDragState = null;
+let bookmarkDropIndicator = null;
 let expandedBookmarkFolderIds = new Set();
 const bookmarkFaviconUrlsCache = new Map();
 const bookmarkChildrenAnimationCleanups = new WeakMap();
@@ -609,6 +611,108 @@ function moveBookmarkNode(id, destination) {
     });
 }
 
+function canDragBookmarkNode(node) {
+    return Boolean(
+        node.url &&
+        node.parentId &&
+        Number.isInteger(node.index) &&
+        !node.unmodifiable
+    );
+}
+
+function clearBookmarkDropIndicator() {
+    if (!bookmarkDropIndicator) return;
+
+    bookmarkDropIndicator.row.classList.remove(
+        'bookmark-row--drop-before',
+        'bookmark-row--drop-after'
+    );
+    bookmarkDropIndicator = null;
+}
+
+function setBookmarkDropIndicator(row, position) {
+    if (bookmarkDropIndicator?.row === row && bookmarkDropIndicator.position === position) return;
+
+    clearBookmarkDropIndicator();
+    row.classList.add(`bookmark-row--drop-${position}`);
+    bookmarkDropIndicator = { row, position };
+}
+
+function finishBookmarkDrag() {
+    bookmarkDragState?.row.classList.remove('bookmark-row--dragging');
+    bookmarkDragState = null;
+    clearBookmarkDropIndicator();
+}
+
+function getBookmarkDropPosition(row, clientY) {
+    const rowRect = row.getBoundingClientRect();
+
+    return clientY < rowRect.top + rowRect.height / 2 ? 'before' : 'after';
+}
+
+function getBookmarkMoveDestination(sourceNode, targetNode, position) {
+    return {
+        parentId: targetNode.parentId,
+        index: targetNode.index + (position === 'after' ? 1 : 0),
+    };
+}
+
+function isBookmarkMoveNoOp(sourceNode, destination) {
+    if (sourceNode.parentId !== destination.parentId) return false;
+
+    return destination.index === sourceNode.index || destination.index === sourceNode.index + 1;
+}
+
+function startBookmarkDrag(event, node, row) {
+    if (!canDragBookmarkNode(node)) {
+        event.preventDefault();
+        return;
+    }
+
+    hideBookmarkContextMenu();
+    bookmarkDragState = { node, row };
+    row.classList.add('bookmark-row--dragging');
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', node.id);
+}
+
+function updateBookmarkDropTarget(event, targetNode, targetRow) {
+    const sourceNode = bookmarkDragState?.node;
+
+    if (!sourceNode || sourceNode.id === targetNode.id || !canDragBookmarkNode(targetNode)) {
+        clearBookmarkDropIndicator();
+        return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    setBookmarkDropIndicator(targetRow, getBookmarkDropPosition(targetRow, event.clientY));
+}
+
+async function dropBookmarkNode(event, targetNode, targetRow) {
+    const sourceNode = bookmarkDragState?.node;
+
+    if (!sourceNode || sourceNode.id === targetNode.id || !canDragBookmarkNode(targetNode)) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const position = getBookmarkDropPosition(targetRow, event.clientY);
+    const destination = getBookmarkMoveDestination(sourceNode, targetNode, position);
+
+    finishBookmarkDrag();
+
+    if (isBookmarkMoveNoOp(sourceNode, destination)) return;
+
+    try {
+        await moveBookmarkNode(sourceNode.id, destination);
+        scheduleBookmarksTreeUpdate();
+    } catch (error) {
+        window.alert(error.message || 'Could not move bookmark');
+        scheduleBookmarksTreeUpdate();
+    }
+}
+
 function createBookmarkNode(createDetails) {
     const bookmarksApi = getBookmarksApi();
 
@@ -1118,6 +1222,7 @@ function createBookmarkLinkRow(node, depth) {
     link.className = 'tree-item bookmark-row bookmark-link';
     link.href = node.url;
     link.title = node.url;
+    link.draggable = canDragBookmarkNode(node);
     link.style.setProperty('--tree-indent', `${depth * 14}px`);
     disclosure.className = 'tree-disclosure tree-disclosure--empty';
     icon.className = 'tree-icon tree-icon--bookmark bookmark-favicon';
@@ -1146,6 +1251,16 @@ function createBookmarkLinkRow(node, depth) {
     link.addEventListener('contextmenu', (event) => {
         showBookmarkContextMenu(event, node);
     });
+    link.addEventListener('dragstart', (event) => {
+        startBookmarkDrag(event, node, link);
+    });
+    link.addEventListener('dragover', (event) => {
+        updateBookmarkDropTarget(event, node, link);
+    });
+    link.addEventListener('drop', (event) => {
+        dropBookmarkNode(event, node, link);
+    });
+    link.addEventListener('dragend', finishBookmarkDrag);
 
     link.append(disclosure, icon, title);
 
