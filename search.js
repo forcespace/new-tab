@@ -1,5 +1,6 @@
 const form = document.querySelector('.js-search-form');
 const input = form.querySelector('.js-search-input');
+const themeColorMeta = document.querySelector('meta[name="theme-color"]');
 const themeSelect = document.querySelector('.js-theme-select');
 const defaultSearchEngineSelect = document.querySelector('.js-default-search-engine-select');
 const uiFontSizeSelect = document.querySelector('.js-ui-font-size-select');
@@ -218,6 +219,14 @@ function setTheme(theme) {
     if (!THEMES.has(theme)) return;
 
     document.body.dataset.theme = theme;
+
+    const styles = getComputedStyle(document.body);
+    const browserThemeColor = styles.getPropertyValue('--header-bg').trim();
+    const browserColorScheme = styles.getPropertyValue('--browser-color-scheme').trim();
+
+    themeColorMeta.content = browserThemeColor;
+    document.documentElement.style.colorScheme = browserColorScheme;
+    document.documentElement.style.backgroundColor = styles.getPropertyValue('--page-bg').trim();
     localStorage.setItem(THEME_STORAGE_KEY, theme);
     themeSelect.value = theme;
 }

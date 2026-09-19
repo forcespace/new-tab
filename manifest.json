@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "New Tab с поиском Яндекса без рекламы",
-    "version": "1.0",
+    "version": "1.1",
     "permissions": [
         "bookmarks",
         "favicon"
