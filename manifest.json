@@ -6,10 +6,6 @@
         "bookmarks",
         "favicon"
     ],
-    "host_permissions": [
-        "https://suggest.yandex.ru/*",
-        "https://suggestqueries.google.com/*"
-    ],
     "chrome_url_overrides": {
         "newtab": "newtab.html"
     }

@@ -6,7 +6,6 @@ const defaultSearchEngineSelect = document.querySelector('.js-default-search-eng
 const uiFontSizeSelect = document.querySelector('.js-ui-font-size-select');
 const uiFontFamilySelect = document.querySelector('.js-ui-font-family-select');
 const searchEngineFilters = document.querySelector('.js-search-engine-filters');
-const suggestionsContainer = document.querySelector('.js-search-suggestions');
 const bookmarksTreeContainer = document.querySelector('.js-bookmarks-tree');
 const ideMain = document.querySelector('.ide-main');
 const toolWindow = document.querySelector('.tool-window');
@@ -34,22 +33,10 @@ const MIN_TOOL_WINDOW_WIDTH = 180;
 const MAX_TOOL_WINDOW_WIDTH_RATIO = 0.55;
 const DEFAULT_UI_FONT_SIZE = 'default';
 const DEFAULT_UI_FONT_FAMILY = 'system';
-const SUGGESTION_LIMIT = 6;
-const SUGGESTION_DEBOUNCE = 180;
 const SEARCH_HISTORY_LIMIT = 12;
 const DOUBLE_SHIFT_THRESHOLD = 500;
 const BOOKMARK_FOLDER_ANIMATION_DURATION = 300;
-const FALLBACK_SUFFIXES = [
-    'официальный сайт',
-    'документация',
-    'github',
-    'stackoverflow',
-    'примеры',
-    'на русском',
-];
 
-let suggestionAbortController = null;
-let suggestionDebounceTimer = null;
 let toolWindowResizeState = null;
 let bookmarksRefreshTimer = null;
 let bookmarkDragState = null;
@@ -61,7 +48,6 @@ let hasBookmarksExpansionState = false;
 let shouldResetBookmarkFoldersOnOpen = false;
 let lastShiftPressedAt = 0;
 let currentSearchEngine = DEFAULT_SEARCH_ENGINE;
-let activeSuggestionIndex = -1;
 
 const THEMES = new Set([
     'islands-dark',
@@ -85,14 +71,12 @@ const MODIFIERS = {
         formAction: 'https://yandex.ru/search/',
         inputName: 'text',
         engineColor: '#fc0',
-        suggestionUrl: (query) => `https://suggest.yandex.ru/suggest-ff.cgi?part=${encodeURIComponent(query)}`,
     },
     google: {
         label: 'Google',
         formAction: 'https://www.google.com/search',
         inputName: 'q',
         engineColor: '#4285f4',
-        suggestionUrl: (query) => `https://suggestqueries.google.com/complete/search?client=firefox&q=${encodeURIComponent(query)}`,
     },
     bing: {
         label: 'Bing',
@@ -259,10 +243,8 @@ function setSearchEngine(engine) {
     if (!MODIFIERS[engine]) return;
 
     currentSearchEngine = engine;
-    activeSuggestionIndex = -1;
     updateStyles(engine);
     updateFormAttributes(engine);
-    scheduleSuggestionsUpdate();
 }
 
 function setActiveTab(tab) {
@@ -1419,222 +1401,6 @@ function updateStyles(engine) {
     });
 }
 
-function createSuggestionRow({ title, path, iconClass, iconColor, query, index = -1, active = false, muted = false }) {
-    const row = document.createElement(query ? 'button' : 'div');
-    const icon = document.createElement('span');
-    const titleNode = document.createElement('span');
-    const pathNode = document.createElement('span');
-
-    row.className = `suggestion-row${active ? ' suggestion-row--active' : ''}${muted ? ' suggestion-row--muted' : ''}`;
-    icon.className = `suggestion-icon ${iconClass}`;
-    if (iconColor) {
-        icon.style.backgroundColor = iconColor;
-    }
-    titleNode.className = 'suggestion-title';
-    pathNode.className = 'suggestion-path';
-    titleNode.textContent = title;
-    pathNode.textContent = path;
-
-    if (query) {
-        row.type = 'button';
-        row.dataset.query = query;
-        row.dataset.suggestionIndex = String(index);
-        row.id = `search-suggestion-${index}`;
-        row.tabIndex = -1;
-        row.setAttribute('role', 'option');
-        row.setAttribute('aria-selected', String(active));
-        row.addEventListener('click', () => {
-            input.value = query;
-            updateFormAttributes(currentSearchEngine);
-            form.requestSubmit();
-        });
-    }
-
-    row.append(icon, titleNode, pathNode);
-
-    return row;
-}
-
-function getSuggestionRows() {
-    return [...suggestionsContainer.querySelectorAll('.suggestion-row[data-query]')];
-}
-
-function setActiveSuggestionIndex(index, shouldUpdateInput = false) {
-    const rows = getSuggestionRows();
-
-    if (!rows.length) {
-        activeSuggestionIndex = -1;
-        input.removeAttribute('aria-activedescendant');
-        return;
-    }
-
-    activeSuggestionIndex = Math.min(Math.max(index, 0), rows.length - 1);
-
-    rows.forEach((row, rowIndex) => {
-        const isActive = rowIndex === activeSuggestionIndex;
-
-        row.classList.toggle('suggestion-row--active', isActive);
-        row.setAttribute('aria-selected', String(isActive));
-
-        if (isActive) {
-            input.setAttribute('aria-activedescendant', row.id);
-
-            if (shouldUpdateInput) {
-                input.value = row.dataset.query;
-                row.scrollIntoView({ block: 'nearest' });
-            }
-        }
-    });
-}
-
-function moveActiveSuggestion(direction) {
-    const rows = getSuggestionRows();
-
-    if (!rows.length) return false;
-
-    const nextIndex = activeSuggestionIndex === -1
-        ? 0
-        : (activeSuggestionIndex + direction + rows.length) % rows.length;
-
-    setActiveSuggestionIndex(nextIndex, true);
-
-    return true;
-}
-
-function onSearchInputKeydown(event) {
-    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-
-    if (moveActiveSuggestion(event.key === 'ArrowDown' ? 1 : -1)) {
-        event.preventDefault();
-    }
-}
-
-function getFallbackSuggestions(query) {
-    return FALLBACK_SUFFIXES.map((suffix) => `${query} ${suffix}`);
-}
-
-function renderSuggestions(query, suggestions = [], isOffline = false) {
-    const engine = MODIFIERS[currentSearchEngine];
-    const trimmedQuery = query.trim();
-
-    suggestionsContainer.replaceChildren();
-    input.removeAttribute('aria-activedescendant');
-
-    if (!trimmedQuery) {
-        activeSuggestionIndex = -1;
-        return;
-    }
-
-    suggestionsContainer.append(createSuggestionRow({
-        title: trimmedQuery,
-        path: `search with ${engine.label}`,
-        iconClass: 'suggestion-icon--engine',
-        iconColor: engine.engineColor,
-        query: trimmedQuery,
-        index: 0,
-        active: true,
-    }));
-
-    suggestions
-        .filter((suggestion) => suggestion.toLowerCase() !== trimmedQuery.toLowerCase())
-        .slice(0, SUGGESTION_LIMIT)
-        .forEach((suggestion, suggestionIndex) => {
-            suggestionsContainer.append(createSuggestionRow({
-                title: suggestion,
-                path: engine.label,
-                iconClass: 'suggestion-icon--search',
-                query: suggestion,
-                index: suggestionIndex + 1,
-            }));
-        });
-
-    if (isOffline) {
-        suggestionsContainer.append(createSuggestionRow({
-            title: 'Не удалось загрузить подсказки',
-            path: 'local fallback',
-            iconClass: 'suggestion-icon--warning',
-            muted: true,
-        }));
-    }
-
-    setActiveSuggestionIndex(0);
-}
-
-function parseSuggestionResponse(text) {
-    const trimmedText = text.trim();
-    let data;
-
-    try {
-        data = JSON.parse(trimmedText);
-    } catch (jsonError) {
-        const arrayStart = trimmedText.indexOf('[');
-        const arrayEnd = trimmedText.lastIndexOf(']');
-
-        if (arrayStart === -1 || arrayEnd === -1 || arrayEnd <= arrayStart) {
-            throw jsonError;
-        }
-
-        data = JSON.parse(trimmedText.slice(arrayStart, arrayEnd + 1));
-    }
-
-    if (Array.isArray(data) && Array.isArray(data[1])) {
-        return data[1];
-    }
-
-    if (Array.isArray(data)) {
-        return data;
-    }
-
-    return [];
-}
-
-async function fetchSuggestions(query, engine, signal) {
-    const response = await fetch(MODIFIERS[engine].suggestionUrl(query), { signal });
-
-    if (!response.ok) {
-        throw new Error(`Suggest request failed: ${response.status}`);
-    }
-
-    const data = await response.text();
-    const suggestions = parseSuggestionResponse(data);
-
-    return suggestions.filter((suggestion) => typeof suggestion === 'string');
-}
-
-function scheduleSuggestionsUpdate() {
-    const query = input.value.trim();
-    const engine = currentSearchEngine;
-
-    clearTimeout(suggestionDebounceTimer);
-
-    if (suggestionAbortController) {
-        suggestionAbortController.abort();
-    }
-
-    renderSuggestions(query);
-
-    if (!query || !MODIFIERS[engine]) return;
-
-    if (!MODIFIERS[engine].suggestionUrl) {
-        renderSuggestions(query, getFallbackSuggestions(query));
-        return;
-    }
-
-    suggestionAbortController = new AbortController();
-
-    suggestionDebounceTimer = setTimeout(async () => {
-        try {
-            const suggestions = await fetchSuggestions(query, engine, suggestionAbortController.signal);
-
-            renderSuggestions(query, suggestions);
-        } catch (error) {
-            if (error.name !== 'AbortError') {
-                renderSuggestions(query, getFallbackSuggestions(query), true);
-            }
-        }
-    }, SUGGESTION_DEBOUNCE);
-}
-
 function onWindowResize() {
     const width = parseFloat(getComputedStyle(ideMain).getPropertyValue('--tool-window-width')) || DEFAULT_TOOL_WINDOW_WIDTH;
 
@@ -1674,13 +1440,6 @@ setToolWindowCollapsed(true);
 requestAnimationFrame(() => {
     ideMain.classList.add('ide-main--ready');
 });
-
-suggestionsContainer.id = 'search-suggestions';
-suggestionsContainer.setAttribute('role', 'listbox');
-input.setAttribute('aria-controls', suggestionsContainer.id);
-input.setAttribute('aria-autocomplete', 'list');
-input.addEventListener('input', scheduleSuggestionsUpdate);
-input.addEventListener('keydown', onSearchInputKeydown);
 
 themeSelect.addEventListener('change', () => {
     setTheme(themeSelect.value);
